@@ -10,12 +10,15 @@ const log = (loc, msg, data, hyp) => { try { fs.appendFileSync(logPath, JSON.str
 const resolveUploadDir = () => {
   const envPath = process.env.UPLOAD_PATH && process.env.UPLOAD_PATH.trim();
   if (envPath) {
-    const base = path.isAbsolute(envPath)
-      ? envPath
-      : path.join(__dirname, '..', '..', envPath);
-    return base;
+    // For relative paths (e.g. "uploads"), resolve from backend root
+    // __dirname = backend/middlewares → backend root = one level up
+    if (path.isAbsolute(envPath)) {
+      return envPath;
+    }
+    return path.join(__dirname, '..', envPath);
   }
-  return path.join(__dirname, '../../frontend/public/uploads');
+  // Fallback: frontend/public/uploads under repo root
+  return path.join(__dirname, '../..', 'frontend', 'public', 'uploads');
 };
 
 const uploadDir = resolveUploadDir();

@@ -19,8 +19,8 @@ const otpTokenSchema = new mongoose.Schema(
     },
     expiresAt: {
       type: Date,
-      required: true,
-      index: true
+      required: true
+      // TTL index is defined below with otpTokenSchema.index(...)
     },
     attempts: {
       type: Number,

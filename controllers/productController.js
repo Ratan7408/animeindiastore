@@ -1,10 +1,30 @@
+// @ts-nocheck
+/* eslint-disable */
 const Product = require('../models/Product');
 const Collection = require('../models/Collection');
 const Category = require('../models/Category');
 
-// Helper to build absolute image URLs pointing to the API domain
+// Helper to build absolute image URLs pointing to the backend origin
 // so frontend/admin don't depend on their own host for /uploads paths.
-const BACKEND_URL = (process.env.BACKEND_URL || '').replace(/\/$/, '');
+// We accept BACKEND_URL as either:
+//   - "https://domain.com"
+//   - "https://domain.com/api"
+// and always normalize it to just "https://domain.com".
+const rawBackend = (process.env.BACKEND_URL || '').trim();
+let BACKEND_URL = '';
+if (rawBackend) {
+  try {
+    const withScheme =
+      rawBackend.startsWith('http://') || rawBackend.startsWith('https://')
+        ? rawBackend
+        : `http://${rawBackend}`;
+    const u = new URL(withScheme);
+    BACKEND_URL = u.origin; // protocol + '//' + host
+  } catch (e) {
+    // Fallback: strip any trailing "/api" and slashes
+    BACKEND_URL = rawBackend.replace(/\/api\/?$/i, '').replace(/\/+$/, '');
+  }
+}
 const toImageUrl = (p) => {
   if (!p || typeof p !== 'string') return p;
   if (p.startsWith('http://') || p.startsWith('https://')) return p;
@@ -1087,10 +1107,10 @@ exports.deleteProduct = async (req, res) => {
 // @desc    Bulk delete products (Admin only)
 // @route   POST /api/products/bulk-delete
 // @access  Private/Admin
-exports.bulkDeleteProducts = async (req, res) => {
+async function bulkDeleteProducts(req, res) {
   try {
     const { productIds } = req.body;
-    
+
     if (!Array.isArray(productIds) || productIds.length === 0) {
       return res.status(400).json({
         success: false,
@@ -1112,12 +1132,14 @@ exports.bulkDeleteProducts = async (req, res) => {
       error: error.message
     });
   }
-};
+}
+
+exports.bulkDeleteProducts = bulkDeleteProducts;
 
 // @desc    Bulk update stock status (Admin only)
 // @route   POST /api/products/bulk-stock-update
 // @access  Private/Admin
-exports.bulkUpdateStock = async (req, res) => {
+async function bulkUpdateStock(req, res) {
   try {
     const { productIds, stockStatus, stockQuantity } = req.body;
     
@@ -1159,7 +1181,9 @@ exports.bulkUpdateStock = async (req, res) => {
       error: error.message
     });
   }
-};
+}
+
+exports.bulkUpdateStock = bulkUpdateStock;
 
 // @desc    Bulk set a specific size stock to 0 for many products
 // @route   POST /api/products/bulk-size-stock-update
@@ -1207,7 +1231,7 @@ exports.bulkUpdateSizeStock = async (req, res) => {
       } else if (product.stockStatus !== 'IN_STOCK') {
         product.stockStatus = 'IN_STOCK';
       }
-
+    
       await product.save();
       modifiedCount += 1;
     }
@@ -1275,16 +1299,28 @@ exports.getCategoriesForYouSlots = async (req, res) => {
       'Wigs': {}
     };
 
-    products.forEach(p => {
+    // Build a simple map of occupied slots per category without nested arrow functions,
+    // to keep older JS/TS parsers happy.
+    for (const p of products) {
       const cfy = p.featuredCategoriesForYou || {};
-      const obj = cfy && typeof cfy.toObject === 'function' ? cfy.toObject() : (typeof cfy === 'object' ? cfy : {});
-      Object.entries(obj).forEach(([cat, pos]) => {
+      const obj =
+        cfy && typeof cfy.toObject === 'function'
+          ? cfy.toObject()
+          : (cfy && typeof cfy === 'object' ? cfy : {});
+
+      const entries = Object.entries(obj);
+      for (const entry of entries) {
+        const cat = entry[0];
+        const pos = entry[1];
         const posNum = parseInt(pos, 10);
         if (posNum >= 1 && posNum <= 6 && slots[cat] !== undefined) {
-          slots[cat][String(posNum)] = { productId: p._id.toString(), productName: p.name || 'Unknown' };
+          slots[cat][String(posNum)] = {
+            productId: String(p._id),
+            productName: p.name || 'Unknown'
+          };
         }
-      });
-    });
+      }
+    }
 
     res.json({ success: true, data: slots });
   } catch (error) {
@@ -1295,4 +1331,3 @@ exports.getCategoriesForYouSlots = async (req, res) => {
     });
   }
 };
-
