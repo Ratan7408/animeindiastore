@@ -27,9 +27,18 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// Serve uploaded files from frontend/public/uploads (where new uploads are stored)
-// This allows both frontend and admin panel to access images
-const uploadsPath = path.join(__dirname, '../frontend/public/uploads');
+// Serve uploaded files from a configurable upload directory.
+// In production we use UPLOAD_PATH from .env (e.g. "uploads" or an absolute path).
+// Fallback (for older setups) is ../frontend/public/uploads.
+const resolveUploadPath = () => {
+  const envPath = process.env.UPLOAD_PATH && process.env.UPLOAD_PATH.trim();
+  if (envPath) {
+    // Absolute path: use as-is. Relative: resolve from backend root (__dirname)
+    return path.isAbsolute(envPath) ? envPath : path.join(__dirname, envPath);
+  }
+  return path.join(__dirname, '../frontend/public/uploads');
+};
+const uploadsPath = resolveUploadPath();
 app.use('/uploads', express.static(uploadsPath));
 
 // Root route

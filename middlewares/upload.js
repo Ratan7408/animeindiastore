@@ -4,12 +4,23 @@ const fs = require('fs');
 const logPath = path.join(__dirname, '../../.cursor/debug.log');
 const log = (loc, msg, data, hyp) => { try { fs.appendFileSync(logPath, JSON.stringify({location:loc,message:msg,data,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:hyp})+'\n'); } catch(e) {} };
 
-// Upload to frontend/public/uploads (served as static assets)
-// This keeps images in frontend, reducing backend/MongoDB storage needs
-// __dirname is backend/middlewares, so go up 2 levels to reach root, then into frontend
-const uploadDir = path.join(__dirname, '../../frontend/public/uploads');
+// Upload directory:
+// - Prefer UPLOAD_PATH from .env (same as server.js static /uploads route)
+// - Fallback to ../frontend/public/uploads (older monorepo layout)
+const resolveUploadDir = () => {
+  const envPath = process.env.UPLOAD_PATH && process.env.UPLOAD_PATH.trim();
+  if (envPath) {
+    const base = path.isAbsolute(envPath)
+      ? envPath
+      : path.join(__dirname, '..', '..', envPath);
+    return base;
+  }
+  return path.join(__dirname, '../../frontend/public/uploads');
+};
+
+const uploadDir = resolveUploadDir();
 // #region agent log
-log('upload.js:8', 'Upload directory path check', {uploadDir,exists:fs.existsSync(uploadDir),__dirname}, 'A');
+log('upload.js:8', 'Upload directory path check', {uploadDir,exists:fs.existsSync(uploadDir),__dirname,envPath:process.env.UPLOAD_PATH}, 'A');
 // #endregion
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
