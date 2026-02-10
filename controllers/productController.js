@@ -2,6 +2,18 @@ const Product = require('../models/Product');
 const Collection = require('../models/Collection');
 const Category = require('../models/Category');
 
+// Helper to build absolute image URLs pointing to the API domain
+// so frontend/admin don't depend on their own host for /uploads paths.
+const BACKEND_URL = (process.env.BACKEND_URL || '').replace(/\/$/, '');
+const toImageUrl = (p) => {
+  if (!p || typeof p !== 'string') return p;
+  if (p.startsWith('http://') || p.startsWith('https://')) return p;
+  if (p.startsWith('/uploads/')) {
+    return BACKEND_URL ? `${BACKEND_URL}${p}` : p;
+  }
+  return p;
+};
+
 const CATEGORIES_FOR_YOU_TYPES = ['Regular Tshirt', 'Oversized', 'long sleeves', 'Hoodies', 'Action Figures', 'Posters', 'Wigs'];
 
 function parseFeaturedCategoriesForYou(val) {
@@ -338,16 +350,18 @@ exports.createProduct = async (req, res) => {
     let images = [];
     if (req.files && req.files.length > 0) {
       // Multiple files uploaded
-      images = req.files.map(file => `/uploads/${file.filename}`);
+      images = req.files.map(file => toImageUrl(`/uploads/${file.filename}`));
     } else if (req.file) {
       // Single file (backward compatibility)
-      images.push(`/uploads/${req.file.filename}`);
+      images.push(toImageUrl(`/uploads/${req.file.filename}`));
     } else if (req.body.images && Array.isArray(req.body.images)) {
       // Existing images from edit (filter out any non-string values)
-      images = req.body.images.filter(img => typeof img === 'string' && img.trim().length > 0);
+      images = req.body.images
+        .filter(img => typeof img === 'string' && img.trim().length > 0)
+        .map(toImageUrl);
     } else if (req.body.image && typeof req.body.image === 'string' && req.body.image.trim().length > 0) {
       // Single existing image (backward compatibility)
-      images = [req.body.image];
+      images = [toImageUrl(req.body.image)];
     }
 
     console.log('🖼️ Images array:', images);
@@ -618,26 +632,29 @@ exports.updateProduct = async (req, res) => {
     }
 
     // Handle multiple image uploads
-    let images = product.images || [];
+    let images = (product.images || []).map(toImageUrl);
     
     if (req.files && req.files.length > 0) {
       // New images uploaded - add them to existing images
-      const newImages = req.files.map(file => `/uploads/${file.filename}`);
+      const newImages = req.files.map(file => toImageUrl(`/uploads/${file.filename}`));
       images = [...images, ...newImages];
       req.body.images = images;
     } else if (req.file) {
       // Single file (backward compatibility)
-      images.push(`/uploads/${req.file.filename}`);
+      images.push(toImageUrl(`/uploads/${req.file.filename}`));
       req.body.images = images;
     } else if (req.body.images) {
       // Images provided in body (existing images from edit)
       if (Array.isArray(req.body.images)) {
-        images = req.body.images.filter(img => typeof img === 'string' && img.trim().length > 0);
+        images = req.body.images
+          .filter(img => typeof img === 'string' && img.trim().length > 0)
+          .map(toImageUrl);
       } else if (typeof req.body.images === 'string') {
         try {
-          images = JSON.parse(req.body.images);
+          const parsed = JSON.parse(req.body.images);
+          images = Array.isArray(parsed) ? parsed.map(toImageUrl) : images;
         } catch (e) {
-          images = product.images || [];
+          images = (product.images || []).map(toImageUrl);
         }
       }
       req.body.images = images;
