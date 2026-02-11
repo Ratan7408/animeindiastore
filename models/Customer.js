@@ -17,8 +17,8 @@ const addressSchema = new mongoose.Schema({
 const customerSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: true,
-    trim: true
+    trim: true,
+    default: ''
   },
   email: {
     type: String,
@@ -30,8 +30,8 @@ const customerSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    required: true,
-    trim: true
+    trim: true,
+    default: ''
   },
   dateOfBirth: { type: Date, default: null },
   gender: { type: String, enum: ['MALE', 'FEMALE', 'OTHER'], default: null },

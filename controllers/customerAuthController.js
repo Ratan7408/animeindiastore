@@ -178,17 +178,12 @@ exports.verifyOtp = async (req, res) => {
     let customer = await Customer.findOne({ email: normalizedEmail });
 
     if (!customer) {
-      if (!name || !phone) {
-        return res.status(400).json({
-          success: false,
-          message: 'Name and phone are required to create a new account'
-        });
-      }
-
+      // Create customer even if name/phone are not provided.
+      // These can be filled later in profile or during checkout.
       customer = await Customer.create({
-        name,
+        name: (name || '').trim(),
         email: normalizedEmail,
-        phone: phone.trim(),
+        phone: (phone || '').trim(),
         emailVerified: true
       });
     } else {
