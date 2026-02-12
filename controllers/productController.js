@@ -1,8 +1,42 @@
 // @ts-nocheck
 /* eslint-disable */
+const path = require('path');
+const fs = require('fs');
 const Product = require('../models/Product');
 const Collection = require('../models/Collection');
 const Category = require('../models/Category');
+
+// Resolve upload directory (same as server.js / upload.js) so we can delete image files when a product is deleted.
+// __dirname here is backend/controllers; backend root is '..', repo root is '../..'.
+function getUploadDir() {
+  const envPath = process.env.UPLOAD_PATH && process.env.UPLOAD_PATH.trim();
+  const backendRoot = path.join(__dirname, '..');
+  if (envPath) {
+    return path.isAbsolute(envPath) ? envPath : path.join(backendRoot, envPath);
+  }
+  return path.join(backendRoot, '..', 'frontend', 'public', 'uploads');
+}
+
+// Delete image files from disk for given image URLs (e.g. /uploads/foo.jpg or https://host/uploads/foo.jpg).
+function deleteProductImagesFromDisk(imageUrls) {
+  if (!Array.isArray(imageUrls) || imageUrls.length === 0) return;
+  const uploadDir = getUploadDir();
+  for (const url of imageUrls) {
+    if (!url || typeof url !== 'string') continue;
+    const match = url.match(/\/uploads\/([^/?#]+)$/);
+    if (!match) continue;
+    const filename = match[1];
+    if (!filename || filename.includes('..')) continue; // avoid path traversal
+    const filePath = path.join(uploadDir, filename);
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (err) {
+      console.error('Failed to delete product image file:', filePath, err.message);
+    }
+  }
+}
 
 // Helper to build absolute image URLs pointing to the backend origin
 // so frontend/admin don't depend on their own host for /uploads paths.
@@ -1089,6 +1123,10 @@ exports.deleteProduct = async (req, res) => {
       });
     }
 
+    // Delete image files from upload folder
+    const images = product.images || [];
+    deleteProductImagesFromDisk(images);
+
     await Product.findByIdAndDelete(req.params.id);
 
     res.json({
@@ -1116,6 +1154,13 @@ async function bulkDeleteProducts(req, res) {
         success: false,
         message: 'Please provide an array of product IDs'
       });
+    }
+
+    // Fetch products first so we can delete their image files from disk
+    const products = await Product.find({ _id: { $in: productIds } });
+    for (const product of products) {
+      const images = product.images || [];
+      deleteProductImagesFromDisk(images);
     }
 
     const result = await Product.deleteMany({ _id: { $in: productIds } });

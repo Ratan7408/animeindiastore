@@ -1,6 +1,7 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const logPath = path.join(__dirname, '../../.cursor/debug.log');
 const log = (loc, msg, data, hyp) => { try { fs.appendFileSync(logPath, JSON.stringify({location:loc,message:msg,data,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:hyp})+'\n'); } catch(e) {} };
 
@@ -41,10 +42,10 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
-    // Generate unique filename: timestamp-random-originalname
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    // Generate unique filename to avoid collisions and cache mix-ups between products
+    const uniqueSuffix = Date.now() + '-' + crypto.randomBytes(8).toString('hex');
     const ext = path.extname(file.originalname);
-    const name = path.basename(file.originalname, ext);
+    const name = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9-_]/g, '_').slice(0, 40) || 'image';
     const finalFilename = `${name}-${uniqueSuffix}${ext}`;
     const fullPath = path.join(uploadDir, finalFilename);
     // #region agent log
