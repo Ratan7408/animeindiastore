@@ -21,8 +21,8 @@ const { apiLimiter, adminLimiter } = require('../middlewares/rateLimiter');
 router.get('/', apiLimiter, optionalAuth, getAllProducts);
 router.get('/out-of-stock', authenticate, isAdmin, getOutOfStockProducts);
 router.get('/categories-for-you-slots', authenticate, isAdmin, getCategoriesForYouSlots);
-router.get('/slug/:slug', apiLimiter, getProduct); // Must be before /:id
-router.get('/:id', apiLimiter, getProduct);
+router.get('/slug/:slug', apiLimiter, optionalAuth, getProduct); // Must be before /:id
+router.get('/:id', apiLimiter, optionalAuth, getProduct);
 
 // Admin routes
 router.post(

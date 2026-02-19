@@ -253,12 +253,18 @@ exports.createOrder = async (req, res) => {
 
       // Get product image (use color-specific if available)
       let productImage = product.images && product.images[0] ? product.images[0] : null;
-      if (item.color && product.imagesByColor && product.imagesByColor.get(item.color)) {
-        const colorImages = product.imagesByColor.get(item.color);
-        if (colorImages && colorImages.length > 0) {
+      if (item.color && product.imagesByColor) {
+        const colorImages = typeof product.imagesByColor.get === 'function'
+          ? product.imagesByColor.get(item.color)
+          : product.imagesByColor[item.color];
+        if (colorImages && Array.isArray(colorImages) && colorImages.length > 0) {
           productImage = colorImages[0];
         }
       }
+
+      const validSizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+      const orderSize = item.size && validSizes.includes(String(item.size).toUpperCase()) ? String(item.size).toUpperCase() : undefined;
+      const orderColor = item.color && String(item.color).trim() ? String(item.color).trim() : undefined;
 
       orderItems.push({
         product: product._id,
@@ -267,8 +273,8 @@ exports.createOrder = async (req, res) => {
         price: itemPrice,
         discount: item.discount || product.discount || 0,
         quantity,
-        size: item.size,
-        color: item.color,
+        ...(orderSize && { size: orderSize }),
+        ...(orderColor && { color: orderColor }),
         image: productImage
       });
 
@@ -493,27 +499,6 @@ exports.createOrder = async (req, res) => {
 // @route   GET /api/orders/my-orders
 // @access  Private/Customer
 exports.getMyOrders = async (req, res) => {
-  // #region agent log
-  const fs = require('fs');
-  const logPath = 'c:\\Users\\RATAN\\Desktop\\animeweb\\.cursor\\debug.log';
-  const logEntry = {
-    location: 'orderController.js:250',
-    message: 'getMyOrders called',
-    data: {
-      hasCustomer: !!req.customer,
-      customerId: req.customer?._id?.toString() || null,
-      customerEmail: req.customer?.email || null
-    },
-    timestamp: Date.now(),
-    sessionId: 'debug-session',
-    runId: 'run1',
-    hypothesisId: 'A'
-  };
-  try {
-    fs.appendFileSync(logPath, JSON.stringify(logEntry) + '\n');
-  } catch (e) {}
-  // #endregion
-  
   try {
     if (!req.customer || !req.customer._id) {
       return res.status(401).json({
@@ -523,25 +508,7 @@ exports.getMyOrders = async (req, res) => {
     }
     
     const customerId = req.customer._id;
-    
-    // #region agent log
-    const logEntry2 = {
-      location: 'orderController.js:270',
-      message: 'Querying orders',
-      data: {
-        customerId: customerId.toString(),
-        query: { customer: customerId }
-      },
-      timestamp: Date.now(),
-      sessionId: 'debug-session',
-      runId: 'run1',
-      hypothesisId: 'B'
-    };
-    try {
-      fs.appendFileSync(logPath, JSON.stringify(logEntry2) + '\n');
-    } catch (e) {}
-    // #endregion
-    
+
     const orders = await Order.find({ customer: customerId })
       .populate('items.product', 'name sku images imagesByColor')
       .sort({ createdAt: -1 });
@@ -553,49 +520,12 @@ exports.getMyOrders = async (req, res) => {
     }
     await Promise.allSettled(toSync.map(o => syncOrderTrackingFromShiprocket(o)));
 
-    // #region agent log
-    const logEntry3 = {
-      location: 'orderController.js:280',
-      message: 'Orders found',
-      data: {
-        ordersCount: orders.length,
-        orderIds: orders.map(o => o._id.toString())
-      },
-      timestamp: Date.now(),
-      sessionId: 'debug-session',
-      runId: 'run1',
-      hypothesisId: 'C'
-    };
-    try {
-      fs.appendFileSync(logPath, JSON.stringify(logEntry3) + '\n');
-    } catch (e) {}
-    // #endregion
-
     res.json({
       success: true,
       count: orders.length,
       data: orders
     });
   } catch (error) {
-    // #region agent log
-    const logError = {
-      location: 'orderController.js:295',
-      message: 'Error in getMyOrders',
-      data: {
-        errorMessage: error.message,
-        errorStack: error.stack,
-        errorName: error.name
-      },
-      timestamp: Date.now(),
-      sessionId: 'debug-session',
-      runId: 'run1',
-      hypothesisId: 'D'
-    };
-    try {
-      fs.appendFileSync(logPath, JSON.stringify(logError) + '\n');
-    } catch (e) {}
-    // #endregion
-    
     console.error('Error fetching customer orders:', error);
     res.status(500).json({
       success: false,

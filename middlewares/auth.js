@@ -143,53 +143,11 @@ exports.authenticateCustomer = async (req, res, next) => {
 
 // Customer authentication (required - no guest access)
 exports.requireCustomer = async (req, res, next) => {
-  // #region agent log
-  const fs = require('fs');
-  const logPath = 'c:\\Users\\RATAN\\Desktop\\animeweb\\.cursor\\debug.log';
-  const authHeader = req.header('Authorization');
-  const logEntry = {
-    location: 'auth.js:requireCustomer',
-    message: 'requireCustomer middleware called',
-    data: {
-      hasAuthHeader: !!authHeader,
-      authHeaderValue: authHeader ? authHeader.substring(0, 20) + '...' : null,
-      method: req.method,
-      path: req.path
-    },
-    timestamp: Date.now(),
-    sessionId: 'debug-session',
-    runId: 'run1',
-    hypothesisId: 'A'
-  };
-  try {
-    fs.appendFileSync(logPath, JSON.stringify(logEntry) + '\n');
-  } catch (e) {}
-  // #endregion
-  
   try {
     // Try multiple ways to get the Authorization header
     const authHeader = req.header('Authorization') || req.headers.authorization || req.get('Authorization');
     const token = authHeader?.replace(/^Bearer\s+/i, '').trim();
-    
-    // #region agent log
-    const logEntry2 = {
-      location: 'auth.js:requireCustomer',
-      message: 'Token extracted',
-      data: {
-        hasToken: !!token,
-        tokenLength: token?.length || 0,
-        tokenPrefix: token ? token.substring(0, 20) + '...' : null
-      },
-      timestamp: Date.now(),
-      sessionId: 'debug-session',
-      runId: 'run1',
-      hypothesisId: 'B'
-    };
-    try {
-      fs.appendFileSync(logPath, JSON.stringify(logEntry2) + '\n');
-    } catch (e) {}
-    // #endregion
-    
+
     if (!token) {
       return res.status(401).json({
         success: false,
@@ -200,45 +158,8 @@ exports.requireCustomer = async (req, res, next) => {
     try {
       const jwtSecret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
       const decoded = jwt.verify(token, jwtSecret);
-      
-      // #region agent log
-      const logEntry3 = {
-        location: 'auth.js:requireCustomer',
-        message: 'Token decoded',
-        data: {
-          decodedId: decoded.id,
-          decodedEmail: decoded.email || null
-        },
-        timestamp: Date.now(),
-        sessionId: 'debug-session',
-        runId: 'run1',
-        hypothesisId: 'C'
-      };
-      try {
-        fs.appendFileSync(logPath, JSON.stringify(logEntry3) + '\n');
-      } catch (e) {}
-      // #endregion
-      
       const customer = await Customer.findById(decoded.id);
-      
-      // #region agent log
-      const logEntry4 = {
-        location: 'auth.js:requireCustomer',
-        message: 'Customer lookup',
-        data: {
-          customerFound: !!customer,
-          customerId: customer?._id?.toString() || null
-        },
-        timestamp: Date.now(),
-        sessionId: 'debug-session',
-        runId: 'run1',
-        hypothesisId: 'D'
-      };
-      try {
-        fs.appendFileSync(logPath, JSON.stringify(logEntry4) + '\n');
-      } catch (e) {}
-      // #endregion
-      
+
       if (!customer) {
         return res.status(401).json({
           success: false,
@@ -249,24 +170,6 @@ exports.requireCustomer = async (req, res, next) => {
       req.customer = customer;
       next();
     } catch (error) {
-      // #region agent log
-      const logError = {
-        location: 'auth.js:requireCustomer',
-        message: 'Token verification failed',
-        data: {
-          errorMessage: error.message,
-          errorName: error.name
-        },
-        timestamp: Date.now(),
-        sessionId: 'debug-session',
-        runId: 'run1',
-        hypothesisId: 'E'
-      };
-      try {
-        fs.appendFileSync(logPath, JSON.stringify(logError) + '\n');
-      } catch (e) {}
-      // #endregion
-      
       return res.status(401).json({
         success: false,
         message: 'Invalid or expired token. Please login again.'

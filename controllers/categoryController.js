@@ -23,31 +23,9 @@ exports.getAllCategories = async (req, res) => {
       query.isActive = true;
     }
     // If admin is authenticated, query is empty (shows all categories)
-    
-    // #region agent log
-    const logPath = require('path').join(__dirname, '../../.cursor/debug.log');
-    const fs = require('fs');
-    const log = (loc, msg, data, hyp) => { try { fs.appendFileSync(logPath, JSON.stringify({location:loc,message:msg,data,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:hyp})+'\n'); } catch(e) {} };
-    log('categoryController.js:20', 'getAllCategories query', {
-      hasAdmin: !!req.admin,
-      adminId: req.admin?._id?.toString(),
-      adminEmail: req.admin?.email,
-      query,
-      queryString: JSON.stringify(query),
-      willShowAll: !!req.admin
-    }, 'H1');
-    // #endregion
-    
+
     const categories = await Category.find(query)
       .sort({ displayOrder: 1, name: 1 });
-    
-    // #region agent log
-    log('categoryController.js:30', 'Categories found', {
-      count: categories.length,
-      queryUsed: query,
-      categories: categories.map(c => ({ id: c._id?.toString(), name: c.name, slug: c.slug, isActive: c.isActive }))
-    }, 'H1');
-    // #endregion
 
     res.json({
       success: true,

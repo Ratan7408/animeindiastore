@@ -2,8 +2,6 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const logPath = path.join(__dirname, '../../.cursor/debug.log');
-const log = (loc, msg, data, hyp) => { try { fs.appendFileSync(logPath, JSON.stringify({location:loc,message:msg,data,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:hyp})+'\n'); } catch(e) {} };
 
 // Upload directory:
 // - Prefer UPLOAD_PATH from .env (same as server.js static /uploads route)
@@ -23,22 +21,13 @@ const resolveUploadDir = () => {
 };
 
 const uploadDir = resolveUploadDir();
-// #region agent log
-log('upload.js:8', 'Upload directory path check', {uploadDir,exists:fs.existsSync(uploadDir),__dirname,envPath:process.env.UPLOAD_PATH}, 'A');
-// #endregion
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
-  // #region agent log
-  log('upload.js:11', 'Created upload directory', {uploadDir}, 'A');
-  // #endregion
 }
 
 // Configure storage
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // #region agent log
-    log('upload.js:23', 'Multer destination called', {uploadDir,fileName:file.originalname,fieldName:file.fieldname,dirExists:fs.existsSync(uploadDir)}, 'A');
-    // #endregion
     cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
@@ -47,10 +36,6 @@ const storage = multer.diskStorage({
     const ext = path.extname(file.originalname);
     const name = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9-_]/g, '_').slice(0, 40) || 'image';
     const finalFilename = `${name}-${uniqueSuffix}${ext}`;
-    const fullPath = path.join(uploadDir, finalFilename);
-    // #region agent log
-    log('upload.js:32', 'Multer filename generated', {originalName:file.originalname,finalFilename,fullPath}, 'B');
-    // #endregion
     cb(null, finalFilename);
   }
 });
@@ -60,9 +45,6 @@ const fileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png|gif|webp/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
   const mimetype = allowedTypes.test(file.mimetype);
-  // #region agent log
-  log('upload.js:45', 'File filter check', {originalName:file.originalname,mimetype:file.mimetype,extname,isValid:extname&&mimetype}, 'C');
-  // #endregion
 
   if (extname && mimetype) {
     return cb(null, true);
@@ -80,15 +62,9 @@ const upload = multer({
   fileFilter: fileFilter
 });
 
-// Single file upload middleware wrapper with logging
+// Single file upload middleware wrapper
 exports.uploadSingle = (req, res, next) => {
-  // #region agent log
-  log('upload.js:69', 'uploadSingle middleware called', {contentType:req.headers['content-type'],hasBody:!!req.body,method:req.method}, 'B');
-  // #endregion
   upload.single('image')(req, res, (err) => {
-    // #region agent log
-    log('upload.js:72', 'uploadSingle callback', {hasFile:!!req.file,hasError:!!err,errorMessage:err?.message}, 'B');
-    // #endregion
     if (err) {
       return next(err);
     }
@@ -101,11 +77,6 @@ exports.uploadMultiple = upload.array('images', 10); // Max 10 images
 
 // Error handling middleware for multer
 exports.handleUploadError = (err, req, res, next) => {
-  // #region agent log
-  if (err) {
-    log('upload.js:72', 'Multer error handler', {errorMessage:err.message,errorName:err.name,isMulterError:err instanceof multer.MulterError,errorCode:err.code,hasFile:!!req.file}, 'C');
-  }
-  // #endregion
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({

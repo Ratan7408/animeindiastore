@@ -371,6 +371,10 @@ exports.getProduct = async (req, res) => {
     if (product.imagesByColor && typeof product.imagesByColor.entries === 'function') {
       product.imagesByColor = Object.fromEntries(product.imagesByColor);
     }
+    // Ensure images is always a plain array for admin/frontend (Mongoose can sometimes serialize oddly)
+    if (!Array.isArray(product.images)) {
+      product.images = product.images ? [product.images] : [];
+    }
 
     res.json({
       success: true,
@@ -687,11 +691,24 @@ exports.updateProduct = async (req, res) => {
 
     // Handle multiple image uploads
     let images = (product.images || []).map(toImageUrl);
-    
+    // If existingImages is provided (even if empty []), use it as the base list (user may have removed some)
+    if (req.body.existingImages !== undefined) {
+      try {
+        const parsed = typeof req.body.existingImages === 'string' ? JSON.parse(req.body.existingImages) : req.body.existingImages;
+        if (Array.isArray(parsed)) {
+          images = parsed.filter(img => typeof img === 'string' && img.trim()).map(toImageUrl);
+        }
+      } catch (e) {
+        // keep current images on parse error
+      }
+    }
     if (req.files && req.files.length > 0) {
-      // New images uploaded - add them to existing images
+      // New images uploaded - add them to kept existing images (or start fresh if existingImages was [])
       const newImages = req.files.map(file => toImageUrl(`/uploads/${file.filename}`));
       images = [...images, ...newImages];
+      req.body.images = images;
+    } else if (req.body.existingImages !== undefined) {
+      // Only existingImages provided (no new files) - use the kept list
       req.body.images = images;
     } else if (req.file) {
       // Single file (backward compatibility)
