@@ -67,7 +67,25 @@ const settingsSchema = new mongoose.Schema({
     orderPlaced: { type: Boolean, default: false },
     orderShipped: { type: Boolean, default: false },
     orderDelivered: { type: Boolean, default: false }
-  }
+  },
+  // Homepage hero slider (desktop) – up to 8 banner image URLs
+  homepageHeroBanner1: String,
+  homepageHeroBanner2: String,
+  homepageHeroBanner3: String,
+  homepageHeroBanner4: String,
+  homepageHeroBanner5: String,
+  homepageHeroBanner6: String,
+  homepageHeroBanner7: String,
+  homepageHeroBanner8: String,
+  // Homepage hero slider (mobile/phones) – up to 8 banner image URLs
+  homepageHeroBannerMobile1: String,
+  homepageHeroBannerMobile2: String,
+  homepageHeroBannerMobile3: String,
+  homepageHeroBannerMobile4: String,
+  homepageHeroBannerMobile5: String,
+  homepageHeroBannerMobile6: String,
+  homepageHeroBannerMobile7: String,
+  homepageHeroBannerMobile8: String
 }, {
   timestamps: true
 });

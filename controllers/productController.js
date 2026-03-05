@@ -339,16 +339,32 @@ exports.getProduct = async (req, res) => {
   try {
     let product;
     const { id, slug } = req.params;
-    
+    const mongoose = require('mongoose');
+
     // Check if it's a slug route
     if (slug) {
       product = await Product.findOne({ slug: slug }).lean();
+    } else if (!id || typeof id !== 'string' || id.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'Product ID or slug is required'
+      });
     } else {
-      // Try as ObjectId first, then as slug
-      if (id.match(/^[0-9a-fA-F]{24}$/)) {
-        product = await Product.findById(id).lean();
+      const idTrimmed = id.trim();
+      const looksLikeObjectId = /^[0-9a-fA-F]{24}$/.test(idTrimmed);
+      // Only use findById when it's a valid ObjectId (avoids BsonError)
+      if (looksLikeObjectId && mongoose.Types.ObjectId.isValid(idTrimmed)) {
+        try {
+          product = await Product.findById(idTrimmed).lean();
+        } catch (err) {
+          if (err.name === 'CastError' || err.name === 'BSONError' || (err.message && err.message.includes('ObjectId'))) {
+            product = await Product.findOne({ slug: idTrimmed }).lean();
+          } else {
+            throw err;
+          }
+        }
       } else {
-        product = await Product.findOne({ slug: id }).lean();
+        product = await Product.findOne({ slug: idTrimmed }).lean();
       }
     }
     

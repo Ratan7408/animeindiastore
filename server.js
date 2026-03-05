@@ -61,6 +61,7 @@ const contentController = require('./controllers/contentController');
 const settingsController = require('./controllers/settingsController');
 const publicController = require('./controllers/publicController');
 app.get('/api/public/content/:type', contentController.getPublicContentByType);
+app.get('/api/public/banners', settingsController.getPublicBanners);
 app.get('/api/public/maintenance', settingsController.getPublicMaintenance);
 app.get('/api/public/checkout-settings', settingsController.getPublicCheckoutSettings);
 app.post('/api/public/contact', publicController.handleContact);
