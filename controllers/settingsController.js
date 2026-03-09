@@ -1,3 +1,5 @@
+const path = require('path');
+const fs = require('fs');
 const Settings = require('../models/Settings');
 const AuditLog = require('../models/AuditLog');
 
@@ -135,6 +137,62 @@ exports.uploadHeroBanner = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error uploading banner',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Delete homepage hero banner (clear slot and remove file from disk)
+// @route   DELETE /api/settings/upload-hero-banner?slot=1|2|...|8|mobile1|...|mobile8
+// @access  Private/Admin
+exports.deleteHeroBanner = async (req, res) => {
+  try {
+    const rawSlot = (req.query && req.query.slot) || (req.body && req.body.slot);
+    const slot = rawSlot != null ? String(rawSlot).toLowerCase().trim() : '';
+    const field = HERO_BANNER_SLOTS[slot];
+    if (!field) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing or invalid slot. Use ?slot=1 to 8 for laptop, ?slot=mobile1 to mobile8 for phone.'
+      });
+    }
+    const settings = await Settings.getSettings();
+    const previousUrl = settings[field];
+    settings[field] = undefined;
+    await settings.save();
+
+    if (previousUrl && typeof previousUrl === 'string') {
+      const filename = path.basename(previousUrl);
+      const uploadsDir = path.join(process.cwd(), 'uploads');
+      const filePath = path.join(uploadsDir, filename);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (unlinkErr) {
+        // Log but don't fail the request – slot is already cleared
+        console.warn('Could not delete banner file:', filePath, unlinkErr.message);
+      }
+    }
+
+    await AuditLog.create({
+      admin: req.admin._id,
+      action: 'SETTINGS_UPDATE',
+      entityType: 'SETTINGS',
+      entityId: settings._id,
+      changes: { [field]: null },
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
+    res.json({
+      success: true,
+      message: `Hero banner ${slot} removed`
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting banner',
       error: error.message
     });
   }
