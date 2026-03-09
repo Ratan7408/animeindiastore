@@ -614,6 +614,39 @@ exports.getAllOrders = async (req, res) => {
   }
 };
 
+// @desc    Get order by ID for confirmation page (no auth – allows guest to see order after payment)
+// @route   GET /api/orders/confirmation/:id
+// @access  Public
+exports.getOrderConfirmation = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id)
+      .populate('items.product', 'name sku images imagesByColor');
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    // Optional: sync tracking from Shiprocket so confirmation page can show AWB if just shipped
+    if (order.shiprocketOrderId && !order.trackingNumber) {
+      await syncOrderTrackingFromShiprocket(order);
+    }
+
+    res.json({
+      success: true,
+      data: order
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching order',
+      error: error.message
+    });
+  }
+};
+
 // @desc    Get customer's single order
 // @route   GET /api/orders/my-orders/:id
 // @access  Private/Customer

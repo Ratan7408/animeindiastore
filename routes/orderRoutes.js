@@ -4,6 +4,7 @@ const {
   createOrder,
   getMyOrders,
   getMyOrder,
+  getOrderConfirmation,
   getAllOrders,
   getOrder,
   updateOrderStatus,
@@ -15,6 +16,7 @@ const { adminLimiter } = require('../middlewares/rateLimiter');
 
 // Customer routes
 router.post('/', authenticateCustomer, createOrder);
+router.get('/confirmation/:id', getOrderConfirmation); // Public: for order confirmation page (guest + logged-in)
 router.get('/my-orders', requireCustomer, getMyOrders);
 router.get('/my-orders/:id', requireCustomer, getMyOrder);
 
