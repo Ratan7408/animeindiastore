@@ -77,6 +77,15 @@ const settingsSchema = new mongoose.Schema({
   homepageHeroBanner6: String,
   homepageHeroBanner7: String,
   homepageHeroBanner8: String,
+  // Optional link per desktop banner (e.g. /oversized, /posters) – where clicking the banner goes
+  homepageHeroBanner1Link: String,
+  homepageHeroBanner2Link: String,
+  homepageHeroBanner3Link: String,
+  homepageHeroBanner4Link: String,
+  homepageHeroBanner5Link: String,
+  homepageHeroBanner6Link: String,
+  homepageHeroBanner7Link: String,
+  homepageHeroBanner8Link: String,
   // Homepage hero slider (mobile/phones) – up to 8 banner image URLs
   homepageHeroBannerMobile1: String,
   homepageHeroBannerMobile2: String,
@@ -85,7 +94,16 @@ const settingsSchema = new mongoose.Schema({
   homepageHeroBannerMobile5: String,
   homepageHeroBannerMobile6: String,
   homepageHeroBannerMobile7: String,
-  homepageHeroBannerMobile8: String
+  homepageHeroBannerMobile8: String,
+  // Optional link per mobile banner
+  homepageHeroBannerMobile1Link: String,
+  homepageHeroBannerMobile2Link: String,
+  homepageHeroBannerMobile3Link: String,
+  homepageHeroBannerMobile4Link: String,
+  homepageHeroBannerMobile5Link: String,
+  homepageHeroBannerMobile6Link: String,
+  homepageHeroBannerMobile7Link: String,
+  homepageHeroBannerMobile8Link: String
 }, {
   timestamps: true
 });

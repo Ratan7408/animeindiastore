@@ -33,6 +33,8 @@ exports.getPublicBanners = async (req, res) => {
     for (let i = 1; i <= 8; i++) {
       data[`banner${i}`] = settings[`homepageHeroBanner${i}`] || null;
       data[`mobileBanner${i}`] = settings[`homepageHeroBannerMobile${i}`] || null;
+      data[`banner${i}Link`] = settings[`homepageHeroBanner${i}Link`] || null;
+      data[`mobileBanner${i}Link`] = settings[`homepageHeroBannerMobile${i}Link`] || null;
     }
     res.json({ success: true, data });
   } catch (error) {
@@ -40,6 +42,8 @@ exports.getPublicBanners = async (req, res) => {
     for (let i = 1; i <= 8; i++) {
       data[`banner${i}`] = null;
       data[`mobileBanner${i}`] = null;
+      data[`banner${i}Link`] = null;
+      data[`mobileBanner${i}Link`] = null;
     }
     res.status(500).json({ success: true, data });
   }
