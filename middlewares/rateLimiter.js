@@ -1,9 +1,11 @@
 const rateLimit = require('express-rate-limit');
 
 // General API rate limiter (higher limit for product listing / search usage)
+// Frontend makes multiple product requests (home, hot selling, navbar, etc.),
+// so allow a higher per-IP limit to avoid 429 for normal browsing.
 exports.apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300, // Limit each IP to 300 requests per window (products, search, etc.)
+  max: 3000, // Limit each IP to 3000 requests per window (products, search, etc.)
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.'

@@ -15,14 +15,16 @@ const {
 const { authenticate, isAdmin, optionalAuth } = require('../middlewares/auth');
 const { uploadSingle, uploadMultiple, handleUploadError } = require('../middlewares/upload');
 const { validate, productValidation } = require('../middlewares/validation');
-const { apiLimiter, adminLimiter } = require('../middlewares/rateLimiter');
+const { adminLimiter } = require('../middlewares/rateLimiter');
 
 // Public routes (optionalAuth: admin token lets admin see inactive products)
-router.get('/', apiLimiter, optionalAuth, getAllProducts);
+// Note: rate limiting for public product listing is handled at gateway level;
+// we do NOT apply per-IP limiter here to avoid 429 for normal browsing.
+router.get('/', optionalAuth, getAllProducts);
 router.get('/out-of-stock', authenticate, isAdmin, getOutOfStockProducts);
 router.get('/categories-for-you-slots', authenticate, isAdmin, getCategoriesForYouSlots);
-router.get('/slug/:slug', apiLimiter, optionalAuth, getProduct); // Must be before /:id
-router.get('/:id', apiLimiter, optionalAuth, getProduct);
+router.get('/slug/:slug', optionalAuth, getProduct); // Must be before /:id
+router.get('/:id', optionalAuth, getProduct);
 
 // Admin routes
 router.post(
