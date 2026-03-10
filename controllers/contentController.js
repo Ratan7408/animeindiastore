@@ -29,10 +29,12 @@ exports.getContentByType = async (req, res) => {
   try {
     const content = await Content.findOne({ type: req.params.type.toUpperCase() });
 
+    // Return 200 with null data when not found so admin can load the page and create content
     if (!content) {
-      return res.status(404).json({
-        success: false,
-        message: 'Content not found'
+      return res.json({
+        success: true,
+        data: null,
+        message: 'No content found for this type'
       });
     }
 
