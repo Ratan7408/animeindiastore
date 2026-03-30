@@ -730,7 +730,9 @@ exports.getOrder = async (req, res) => {
 // @access  Private/Admin
 exports.updateOrderStatus = async (req, res) => {
   try {
-    const { status, trackingNumber, shippingProvider, notes, internalNotes } = req.body;
+    const rawStatus = req.body.status;
+    const status = typeof rawStatus === 'string' ? rawStatus.trim().toUpperCase() : rawStatus;
+    const { trackingNumber, shippingProvider, notes, internalNotes } = req.body;
 
     const order = await Order.findById(req.params.id);
     if (!order) {
@@ -778,18 +780,26 @@ exports.updateOrderStatus = async (req, res) => {
 
     await order.save();
 
-    // When admin confirms order: auto-create shipment in Shiprocket and get tracking (no manual AWB paste)
-    if (status === 'CONFIRMED' && !order.shiprocketOrderId && order.orderStatus !== 'CANCELLED' && order.orderStatus !== 'RETURNED') {
-      setImmediate(() => {
-        shiprocketController.createShipmentForOrder(order).then((result) => {
-          if (result.awbAssigned) {
-            console.log('Auto Shiprocket: order', order._id, 'AWB', result.awbNumber);
+    let shiprocketError = null;
+    let shiprocketInfo = null;
+
+    // When admin confirms: push order to Shiprocket (await so DB + errors are reliable; prepaid COD flag fixed in serviceability)
+    if (status === 'CONFIRMED' && !order.shiprocketOrderId && oldStatus !== 'CANCELLED' && oldStatus !== 'RETURNED') {
+      try {
+        const fresh = await Order.findById(order._id).populate('customer', 'email');
+        if (fresh && fresh.orderStatus === 'CONFIRMED' && !fresh.shiprocketOrderId) {
+          shiprocketInfo = await shiprocketController.createShipmentForOrder(fresh);
+          if (shiprocketInfo?.awbAssigned) {
+            console.log('Auto Shiprocket: order', order._id, 'AWB', shiprocketInfo.awbNumber);
           }
-        }).catch((err) => {
-          console.error('Auto Shiprocket create shipment error:', err.message);
-        });
-      });
+        }
+      } catch (err) {
+        shiprocketError = err.response?.data?.message || err.message || 'Shiprocket sync failed';
+        console.error('Auto Shiprocket create shipment error:', shiprocketError, err.response?.data || '');
+      }
     }
+
+    const orderForResponse = await Order.findById(order._id).populate('customer', 'email name phone');
 
     // Log audit
     await AuditLog.create({
@@ -804,8 +814,12 @@ exports.updateOrderStatus = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Order status updated successfully',
-      data: order
+      message: shiprocketError
+        ? 'Order status updated. Shiprocket had an issue — check message below or create shipment manually in Shiprocket.'
+        : 'Order status updated successfully',
+      data: orderForResponse || order,
+      shiprocketError: shiprocketError || undefined,
+      shiprocketInfo: shiprocketInfo || undefined
     });
   } catch (error) {
     res.status(500).json({

@@ -39,7 +39,14 @@ const resolveUploadPath = () => {
   return path.join(__dirname, '../frontend/public/uploads');
 };
 const uploadsPath = resolveUploadPath();
-app.use('/uploads', express.static(uploadsPath));
+// Filenames include timestamp + random suffix (multer), so long cache is safe for repeat visitors.
+app.use(
+  '/uploads',
+  express.static(uploadsPath, {
+    maxAge: 365 * 24 * 60 * 60 * 1000,
+    immutable: true
+  })
+);
 
 // Root route
 app.get('/', (req, res) => {
@@ -60,8 +67,10 @@ app.get('/', (req, res) => {
 const contentController = require('./controllers/contentController');
 const settingsController = require('./controllers/settingsController');
 const publicController = require('./controllers/publicController');
+const productController = require('./controllers/productController');
 app.get('/api/public/content/:type', contentController.getPublicContentByType);
 app.get('/api/public/banners', settingsController.getPublicBanners);
+app.get('/api/public/home', productController.getHomeBundle);
 app.get('/api/public/maintenance', settingsController.getPublicMaintenance);
 app.get('/api/public/checkout-settings', settingsController.getPublicCheckoutSettings);
 app.post('/api/public/contact', publicController.handleContact);

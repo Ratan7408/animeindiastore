@@ -102,7 +102,9 @@ async function createShipmentForOrder(order, courierId = null) {
         const deliveryPincode = order.shippingAddress?.pincode || '';
         const totalQty = (order.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
         const weight = Math.max(0.5, Math.min(30, totalQty * 0.5));
-        const serviceability = await shiprocketService.checkServiceability(deliveryPincode, weight);
+        // Prepaid vs COD changes serviceability / courier list — was defaulting to COD=1 and breaking prepaid
+        const codFlag = order.paymentMethod === 'COD' ? 1 : 0;
+        const serviceability = await shiprocketService.checkServiceability(deliveryPincode, weight, undefined, codFlag);
         const raw = serviceability?.data;
         const availableCouriers = Array.isArray(raw)
           ? raw

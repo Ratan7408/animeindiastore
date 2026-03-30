@@ -8,8 +8,8 @@ const SHIPROCKET_LOGIN_URL = process.env.SHIPROCKET_LOGIN_URL || 'https://apiv2.
 const SHIPROCKET_BASE_URL = process.env.SHIPROCKET_BASE_URL || 'https://apiv2.shiprocket.in/v1/external';
 const SHIPROCKET_EMAIL = process.env.SHIPROCKET_EMAIL;
 const SHIPROCKET_PASSWORD = process.env.SHIPROCKET_PASSWORD;
-/** Pickup location name – must match exactly a location in Shiprocket (Settings > Pickup Address). */
-const SHIPROCKET_PICKUP_LOCATION = process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary';
+/** Pickup location nickname – must match exactly Shiprocket → Settings → Pickup Address (not the street address). */
+const SHIPROCKET_PICKUP_LOCATION = String(process.env.SHIPROCKET_PICKUP_LOCATION || '').trim() || 'Primary';
 /** Pickup pincode for serviceability check (assign AWB needs courier_id from serviceability). */
 const SHIPROCKET_PICKUP_POSTCODE = process.env.SHIPROCKET_PICKUP_POSTCODE || '110001';
 
@@ -43,6 +43,78 @@ function getAuthHeaders(token) {
   };
 }
 
+/** Shiprocket error text often: "Wrong Pickup location entered..." */
+function isPickupLocationErrorMessage(text) {
+  if (!text || typeof text !== 'string') return false;
+  const t = text.toLowerCase();
+  return t.includes('pickup location') || t.includes('pickup_location') || t.includes('wrong pickup');
+}
+
+/**
+ * List valid pickup nicknames from Shiprocket (for retry when .env name is wrong).
+ * GET /settings/company/pickup — shape may vary by account version.
+ */
+async function fetchPickupLocationNicknames() {
+  const token = await getToken();
+  const paths = [
+    '/settings/company/pickup',
+    '/settings/company/listpickup',
+    '/settings/company/getpickup',
+    '/companies/addresses'
+  ];
+  for (const path of paths) {
+    try {
+      const { data } = await axios.get(`${SHIPROCKET_BASE_URL}${path}`, {
+        headers: getAuthHeaders(token),
+        validateStatus: () => true
+      });
+      if (data.status_code === 404 || data.status === 404) continue;
+      const raw = data.data != null ? data.data : data;
+      const list = Array.isArray(raw)
+        ? raw
+        : (Array.isArray(raw?.shipping_address) ? raw.shipping_address : (Array.isArray(raw?.data) ? raw.data : []));
+      if (!Array.isArray(list) || list.length === 0) continue;
+      const names = list.map((x) => {
+        if (typeof x === 'string') return x.trim();
+        if (!x || typeof x !== 'object') return '';
+        // Shiprocket UI "Address Nickname" often maps to nickname / pickup_location
+        return (
+          x.pickup_location ||
+          x.nickname ||
+          x.address_nickname ||
+          x.address_nick_name ||
+          x.name ||
+          x.pickup_address_nickname ||
+          x.pickup_location_name ||
+          ''
+        ).toString().trim();
+      }).filter(Boolean);
+      const unique = [...new Set(names)];
+      if (unique.length > 0) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Shiprocket] pickup nicknames from API:', unique.join(', '));
+        }
+        return unique;
+      }
+    } catch (e) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[Shiprocket] fetchPickupLocationNicknames', path, e.message);
+      }
+    }
+  }
+  return [];
+}
+
+function pickPickupNickname(candidates, preferred) {
+  if (!candidates || candidates.length === 0) return null;
+  const w = String(preferred || '').trim().toLowerCase();
+  if (w) {
+    const exact = candidates.find((n) => String(n).trim().toLowerCase() === w);
+    if (exact) return String(exact).trim();
+  }
+  return String(candidates[0]).trim();
+}
+
 /** Normalize Indian phone to 10 digits (Shiprocket expects 10-digit mobile) */
 function normalizePhone(phone) {
   if (!phone) return '';
@@ -72,7 +144,8 @@ async function createOrder(order, pickup = null) {
   const pincode = String(addr.pincode || '').replace(/\D/g, '').slice(0, 6) || '000000';
   const country = (addr.country || 'India').trim();
 
-  const orderItems = (order.items || []).map(item => {
+  const lineItems = Array.isArray(order.items) ? order.items : [];
+  const orderItems = lineItems.map(item => {
     const price = Math.max(0, Number(item.price) || 0);
     return {
       name: (item.name || 'Product').toString().slice(0, 100),
@@ -88,7 +161,7 @@ async function createOrder(order, pickup = null) {
     orderItems.push({ name: 'Product', sku: 'NA', units: 1, unit_price: 0, selling_price: 0, is_document: 0 });
   }
 
-  const totalQty = order.items.reduce((s, i) => s + (i.quantity || 1), 0);
+  const totalQty = lineItems.reduce((s, i) => s + (i.quantity || 1), 0);
   const weight = Math.max(0.5, Math.min(30, totalQty * 0.5));
 
   const payload = {
@@ -124,7 +197,7 @@ async function createOrder(order, pickup = null) {
     breadth: 15,
     weight: weight,
     shipping_is_billing: '1',
-    pickup_location: (pickup && pickup.name) ? pickup.name : SHIPROCKET_PICKUP_LOCATION
+    pickup_location: String((pickup && pickup.name) ? pickup.name : SHIPROCKET_PICKUP_LOCATION).trim() || 'Primary'
   };
 
   if (pickup && pickup.address) {
@@ -140,11 +213,66 @@ async function createOrder(order, pickup = null) {
     };
   }
 
-  const { data } = await axios.post(
-    `${SHIPROCKET_BASE_URL}/orders/create/adhoc`,
-    payload,
-    { headers: getAuthHeaders(token) }
-  );
+  async function postAdhoc(body) {
+    return axios.post(
+      `${SHIPROCKET_BASE_URL}/orders/create/adhoc`,
+      body,
+      { headers: getAuthHeaders(token) }
+    );
+  }
+
+  let response;
+  try {
+    response = await postAdhoc(payload);
+  } catch (err) {
+    const raw = err.response?.data;
+    const msg = typeof raw?.message === 'string' ? raw.message : (raw ? JSON.stringify(raw) : err.message);
+    if (isPickupLocationErrorMessage(msg)) {
+      const nicknames = await fetchPickupLocationNicknames();
+      const fixed = pickPickupNickname(nicknames, payload.pickup_location);
+      if (fixed && fixed !== payload.pickup_location) {
+        console.warn('[Shiprocket] Retrying create/adhoc with pickup_location=', fixed, '(was:', payload.pickup_location, ')');
+        payload.pickup_location = fixed;
+        response = await postAdhoc(payload);
+      } else {
+        throw new Error(
+          `${msg} Set SHIPROCKET_PICKUP_LOCATION in backend .env to the exact nickname from Shiprocket → Settings → Pickup Address (e.g. Office).${nicknames.length ? ` Valid names: ${nicknames.join(', ')}.` : ''}`
+        );
+      }
+    } else {
+      throw err;
+    }
+  }
+
+  let data = response.data;
+
+  // HTTP 200 with status_code 422 / wrong pickup in body
+  let sc = data && (data.status_code ?? data.status);
+  let msgText = typeof data?.message === 'string' ? data.message : '';
+  if ((sc === 422 || sc === 400) && isPickupLocationErrorMessage(msgText)) {
+    const nicknames = await fetchPickupLocationNicknames();
+    const fixed = pickPickupNickname(nicknames, payload.pickup_location);
+    if (fixed && fixed !== payload.pickup_location) {
+      payload.pickup_location = fixed;
+      response = await postAdhoc(payload);
+      data = response.data;
+      sc = data && (data.status_code ?? data.status);
+      msgText = typeof data?.message === 'string' ? data.message : '';
+    }
+  }
+
+  if (sc === 422 || sc === 400) {
+    const msg = data.message;
+    const text = typeof msg === 'string' ? msg : (msg && typeof msg === 'object' ? JSON.stringify(msg) : JSON.stringify(data));
+    if (isPickupLocationErrorMessage(text)) {
+      const nicknames = await fetchPickupLocationNicknames();
+      throw new Error(
+        `${text} Set SHIPROCKET_PICKUP_LOCATION to your warehouse nickname in Shiprocket (Settings → Pickup Address).${nicknames.length ? ` Valid: ${nicknames.join(', ')}.` : ''}`
+      );
+    }
+    throw new Error(text || 'Shiprocket rejected the order (validation)');
+  }
+
   return data;
 }
 

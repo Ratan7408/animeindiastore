@@ -5,6 +5,7 @@ const fs = require('fs');
 const Product = require('../models/Product');
 const Collection = require('../models/Collection');
 const Category = require('../models/Category');
+const Settings = require('../models/Settings');
 
 // Resolve upload directory (same as server.js / upload.js) so we can delete image files when a product is deleted.
 // __dirname here is backend/controllers; backend root is '..', repo root is '../..'.
@@ -1405,6 +1406,104 @@ exports.getCategoriesForYouSlots = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching categories for you slots',
+      error: error.message
+    });
+  }
+};
+
+/** Homepage "Categories for you" tabs — must match frontend HomePage category-tab data-product-type values */
+const HOME_CATEGORY_TABS = [
+  'Oversized',
+  'Posters',
+  'Regular Tshirt',
+  'Wigs',
+  'Action Figures',
+  'long sleeves',
+  'Hoodies'
+];
+
+async function fetchCategoryForYouProducts(categoryForYou) {
+  const query = { isActive: true, productTypes: { $in: [categoryForYou] } };
+  const featuredKey = `featuredCategoriesForYou.${categoryForYou}`;
+  const hasFeatured = await Product.exists({
+    ...query,
+    [featuredKey]: { $exists: true, $gte: 1, $lte: 6 }
+  });
+  if (hasFeatured) {
+    query[featuredKey] = { $exists: true, $gte: 1, $lte: 6 };
+  }
+  const sort = {};
+  if (hasFeatured) {
+    sort[featuredKey] = 1;
+  } else {
+    sort.createdAt = -1;
+  }
+  return Product.find(query).sort(sort).limit(6).select('-__v').lean();
+}
+
+// @desc    Single payload for homepage: banners + new arrivals + hot selling + all category tabs (avoids N+1 client requests)
+// @route   GET /api/public/home
+// @access  Public
+exports.getHomeBundle = async (req, res) => {
+  try {
+    const settings = await Settings.getSettings();
+    const banners = {};
+    for (let i = 1; i <= 8; i++) {
+      banners[`banner${i}`] = settings[`homepageHeroBanner${i}`] || null;
+      banners[`mobileBanner${i}`] = settings[`homepageHeroBannerMobile${i}`] || null;
+      banners[`banner${i}Link`] = settings[`homepageHeroBanner${i}Link`] || null;
+      banners[`mobileBanner${i}Link`] = settings[`homepageHeroBannerMobile${i}Link`] || null;
+    }
+
+    const newArrivalQuery = {
+      isActive: true,
+      featuredNewArrivalsOrder: { $exists: true, $ne: null, $gte: 1, $lte: 8 }
+    };
+    const hotSellingQuery = {
+      isActive: true,
+      featuredHotSellingOrder: { $exists: true, $ne: null, $gte: 1, $lte: 8 }
+    };
+
+    const categoryFetches = HOME_CATEGORY_TABS.map((cat) => fetchCategoryForYouProducts(cat));
+
+    const [newArrivals, newArrivalsTotal, hotSelling, ...categoryLists] = await Promise.all([
+      Product.find(newArrivalQuery)
+        .sort({ featuredNewArrivalsOrder: 1 })
+        .limit(9)
+        .select('-__v')
+        .lean(),
+      Product.countDocuments(newArrivalQuery),
+      Product.find(hotSellingQuery)
+        .sort({ featuredHotSellingOrder: 1 })
+        .limit(8)
+        .select('-__v')
+        .lean(),
+      ...categoryFetches
+    ]);
+
+    const categoriesForYou = {};
+    HOME_CATEGORY_TABS.forEach((key, idx) => {
+      categoriesForYou[key] = categoryLists[idx] || [];
+    });
+
+    res.json({
+      success: true,
+      data: {
+        banners,
+        newArrivals,
+        hotSelling,
+        categoriesForYou,
+        meta: {
+          newArrivalsTotal,
+          newArrivalsPageSize: 9
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error in getHomeBundle:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error loading home content',
       error: error.message
     });
   }
