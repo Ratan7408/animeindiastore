@@ -6,6 +6,7 @@ const Product = require('../models/Product');
 const Collection = require('../models/Collection');
 const Category = require('../models/Category');
 const Settings = require('../models/Settings');
+const Content = require('../models/Content');
 
 // Resolve upload directory (same as server.js / upload.js) so we can delete image files when a product is deleted.
 // __dirname here is backend/controllers; backend root is '..', repo root is '../..'.
@@ -1563,6 +1564,32 @@ exports.getHomeBundle = async (req, res) => {
         : null;
       banners[`banner${i}Link`] = settings[`homepageHeroBanner${i}Link`] || null;
       banners[`mobileBanner${i}Link`] = settings[`homepageHeroBannerMobile${i}Link`] || null;
+    }
+
+    // Admin "Add Banner" (Content type BANNER) -> merge into empty hero slots.
+    // This makes hero banners load even if frontend hasn't been updated yet.
+    let cmsBanners = [];
+    try {
+      const contentDoc = await Content.findOne({ type: 'BANNER', isActive: true }).lean();
+      cmsBanners = Array.isArray(contentDoc?.banners) ? contentDoc.banners : [];
+      cmsBanners = cmsBanners
+        .filter((b) => b && b.image && b.isActive !== false)
+        .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+    } catch (_) {
+      cmsBanners = [];
+    }
+
+    if (cmsBanners.length) {
+      for (let i = 1; i <= 8; i++) {
+        const cms = cmsBanners[i - 1];
+        if (!cms) break;
+
+        if (!banners[`banner${i}`]) banners[`banner${i}`] = toImageUrl(cms.image);
+        if (!banners[`mobileBanner${i}`]) banners[`mobileBanner${i}`] = toImageUrl(cms.image);
+
+        if (!banners[`banner${i}Link`] && cms.link) banners[`banner${i}Link`] = cms.link;
+        if (!banners[`mobileBanner${i}Link`] && cms.link) banners[`mobileBanner${i}Link`] = cms.link;
+      }
     }
 
     const newArrivalQuery = {
