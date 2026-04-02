@@ -1555,8 +1555,12 @@ exports.getHomeBundle = async (req, res) => {
     const settings = await Settings.getSettings();
     const banners = {};
     for (let i = 1; i <= 8; i++) {
-      banners[`banner${i}`] = settings[`homepageHeroBanner${i}`] || null;
-      banners[`mobileBanner${i}`] = settings[`homepageHeroBannerMobile${i}`] || null;
+      banners[`banner${i}`] = settings[`homepageHeroBanner${i}`]
+        ? toImageUrl(settings[`homepageHeroBanner${i}`])
+        : null;
+      banners[`mobileBanner${i}`] = settings[`homepageHeroBannerMobile${i}`]
+        ? toImageUrl(settings[`homepageHeroBannerMobile${i}`])
+        : null;
       banners[`banner${i}Link`] = settings[`homepageHeroBanner${i}Link`] || null;
       banners[`mobileBanner${i}Link`] = settings[`homepageHeroBannerMobile${i}Link`] || null;
     }

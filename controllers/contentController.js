@@ -1,6 +1,37 @@
 const Content = require('../models/Content');
 const AuditLog = require('../models/AuditLog');
 
+// Helper to build absolute image URLs for public JSON responses.
+const rawImageBase = (
+  process.env.IMAGE_BASE_URL ||
+  process.env.STORE_FRONTEND_URL ||
+  process.env.BACKEND_URL ||
+  ''
+).trim();
+
+let IMAGE_BASE_URL = '';
+if (rawImageBase) {
+  try {
+    const withScheme =
+      rawImageBase.startsWith('http://') || rawImageBase.startsWith('https://')
+        ? rawImageBase
+        : `http://${rawImageBase}`;
+    const u = new URL(withScheme);
+    IMAGE_BASE_URL = u.origin;
+  } catch {
+    IMAGE_BASE_URL = rawImageBase.replace(/\/api\/?$/i, '').replace(/\/+$/, '');
+  }
+}
+
+const toImageUrl = (p) => {
+  if (!p || typeof p !== 'string') return p;
+  if (p.startsWith('http://') || p.startsWith('https://')) return p;
+  if (p.startsWith('/uploads/')) {
+    return IMAGE_BASE_URL ? `${IMAGE_BASE_URL}${p}` : p;
+  }
+  return p;
+};
+
 // @desc    Get all content
 // @route   GET /api/content
 // @access  Private/Admin
@@ -72,6 +103,13 @@ exports.getPublicContentByType = async (req, res) => {
         success: true,
         data: null,
         message: 'No content found'
+      });
+    }
+
+    // Ensure banner images use the correct public host (CDN/front) in production.
+    if (type === 'BANNER' && content.banners && Array.isArray(content.banners)) {
+      content.banners.forEach((b) => {
+        if (b && b.image) b.image = toImageUrl(b.image);
       });
     }
 

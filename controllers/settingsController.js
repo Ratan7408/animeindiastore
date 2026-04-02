@@ -3,6 +3,38 @@ const fs = require('fs');
 const Settings = require('../models/Settings');
 const AuditLog = require('../models/AuditLog');
 
+// Helper to build absolute image URLs for public JSON responses.
+// Matches productController logic so the frontend can work even without VITE_IMAGE_BASE_URL.
+const rawImageBase = (
+  process.env.IMAGE_BASE_URL ||
+  process.env.STORE_FRONTEND_URL ||
+  process.env.BACKEND_URL ||
+  ''
+).trim();
+
+let IMAGE_BASE_URL = '';
+if (rawImageBase) {
+  try {
+    const withScheme =
+      rawImageBase.startsWith('http://') || rawImageBase.startsWith('https://')
+        ? rawImageBase
+        : `http://${rawImageBase}`;
+    const u = new URL(withScheme);
+    IMAGE_BASE_URL = u.origin;
+  } catch {
+    IMAGE_BASE_URL = rawImageBase.replace(/\/api\/?$/i, '').replace(/\/+$/, '');
+  }
+}
+
+const toImageUrl = (p) => {
+  if (!p || typeof p !== 'string') return p;
+  if (p.startsWith('http://') || p.startsWith('https://')) return p;
+  if (p.startsWith('/uploads/')) {
+    return IMAGE_BASE_URL ? `${IMAGE_BASE_URL}${p}` : p;
+  }
+  return p;
+};
+
 // @desc    Get public checkout settings (shipping, free-ship threshold – no auth)
 // @route   GET /api/public/checkout-settings
 // @access  Public
@@ -31,8 +63,10 @@ exports.getPublicBanners = async (req, res) => {
     const settings = await Settings.getSettings();
     const data = {};
     for (let i = 1; i <= 8; i++) {
-      data[`banner${i}`] = settings[`homepageHeroBanner${i}`] || null;
-      data[`mobileBanner${i}`] = settings[`homepageHeroBannerMobile${i}`] || null;
+      data[`banner${i}`] = settings[`homepageHeroBanner${i}`] ? toImageUrl(settings[`homepageHeroBanner${i}`]) : null;
+      data[`mobileBanner${i}`] = settings[`homepageHeroBannerMobile${i}`]
+        ? toImageUrl(settings[`homepageHeroBannerMobile${i}`])
+        : null;
       data[`banner${i}Link`] = settings[`homepageHeroBanner${i}Link`] || null;
       data[`mobileBanner${i}Link`] = settings[`homepageHeroBannerMobile${i}Link`] || null;
     }
