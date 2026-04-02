@@ -39,37 +39,106 @@ function deleteProductImagesFromDisk(imageUrls) {
   }
 }
 
-// Helper to build absolute image URLs pointing to the backend origin
-// so frontend/admin don't depend on their own host for /uploads paths.
-// We accept BACKEND_URL as either:
+// Helper to build absolute image URLs.
+// Prefer IMAGE_BASE_URL (or STORE_FRONTEND_URL) so images can be served from CDN/front host,
+// fallback to BACKEND_URL when no dedicated image host is configured.
+// We accept IMAGE_BASE_URL / STORE_FRONTEND_URL / BACKEND_URL as either:
 //   - "https://domain.com"
 //   - "https://domain.com/api"
 // and always normalize it to just "https://domain.com".
-const rawBackend = (process.env.BACKEND_URL || '').trim();
-let BACKEND_URL = '';
-if (rawBackend) {
+const rawImageBase = (
+  process.env.IMAGE_BASE_URL ||
+  process.env.STORE_FRONTEND_URL ||
+  process.env.BACKEND_URL ||
+  ''
+).trim();
+let IMAGE_BASE_URL = '';
+if (rawImageBase) {
   try {
     const withScheme =
-      rawBackend.startsWith('http://') || rawBackend.startsWith('https://')
-        ? rawBackend
-        : `http://${rawBackend}`;
+      rawImageBase.startsWith('http://') || rawImageBase.startsWith('https://')
+        ? rawImageBase
+        : `http://${rawImageBase}`;
     const u = new URL(withScheme);
-    BACKEND_URL = u.origin; // protocol + '//' + host
+    IMAGE_BASE_URL = u.origin; // protocol + '//' + host
   } catch (e) {
     // Fallback: strip any trailing "/api" and slashes
-    BACKEND_URL = rawBackend.replace(/\/api\/?$/i, '').replace(/\/+$/, '');
+    IMAGE_BASE_URL = rawImageBase.replace(/\/api\/?$/i, '').replace(/\/+$/, '');
   }
 }
 const toImageUrl = (p) => {
   if (!p || typeof p !== 'string') return p;
   if (p.startsWith('http://') || p.startsWith('https://')) return p;
   if (p.startsWith('/uploads/')) {
-    return BACKEND_URL ? `${BACKEND_URL}${p}` : p;
+    return IMAGE_BASE_URL ? `${IMAGE_BASE_URL}${p}` : p;
   }
   return p;
 };
 
 const CATEGORIES_FOR_YOU_TYPES = ['Regular Tshirt', 'Oversized', 'long sleeves', 'Hoodies', 'Action Figures', 'Posters', 'Wigs'];
+
+const PRODUCT_TYPE_ALIASES = {
+  oversized: [
+    'Oversized',
+    'Oversized Tee',
+    'Oversized Tees',
+    'Oversized T-shirt',
+    'Oversized Tshirt',
+    'Overssed Tee',
+    'Overssed Tees'
+  ],
+  'regular tshirt': ['Regular Tshirt', 'Regular T-shirt', 'Regular Tee', 'Regular Tees'],
+  'long sleeves': ['long sleeves', 'Long Sleeves', 'Full Sleeves', 'Full Sleeve'],
+  hoodies: ['Hoodies', 'Hoodie'],
+  posters: ['Posters', 'Poster'],
+  wigs: ['Wigs', 'Wig'],
+  'action figures': ['Action Figures', 'Action Figure']
+};
+
+function expandProductTypeFilter(productType) {
+  if (!productType || typeof productType !== 'string') return [];
+  const input = productType.trim();
+  if (!input) return [];
+  const key = input.toLowerCase();
+  const aliases = PRODUCT_TYPE_ALIASES[key] || [input];
+  return [...new Set(aliases)];
+}
+
+function buildProductTypesFilter(productType) {
+  const input = (productType || '').toString().trim();
+  if (!input) return { $in: [] };
+  const key = input.toLowerCase();
+  const aliases = expandProductTypeFilter(input);
+  const values = [...aliases];
+
+  if (key === 'oversized') values.push(/^oversized/i, /^overs/i);
+  if (key === 'regular tshirt') values.push(/^regular\s*(t-?shirt|tee)s?$/i);
+  if (key === 'long sleeves') values.push(/^(long|full)\s*sleeves?$/i);
+  if (key === 'action figures') values.push(/^action\s*figures?$/i);
+  if (key === 'posters') values.push(/^posters?$/i);
+  if (key === 'hoodies') values.push(/^hoodies?$/i);
+  if (key === 'wigs') values.push(/^wigs?$/i);
+
+  return { $in: values };
+}
+
+function buildCategoryNameFilter(productType) {
+  const input = (productType || '').toString().trim();
+  if (!input) return { $in: [] };
+  const key = input.toLowerCase();
+  const aliases = expandProductTypeFilter(input);
+  const values = [...aliases];
+
+  if (key === 'oversized') values.push(/^oversized/i, /^overs/i);
+  if (key === 'regular tshirt') values.push(/^regular\s*(t-?shirt|tee)s?$/i);
+  if (key === 'long sleeves') values.push(/^(long|full)\s*sleeves?$/i);
+  if (key === 'action figures') values.push(/^action\s*figures?$/i);
+  if (key === 'posters') values.push(/^posters?$/i);
+  if (key === 'hoodies') values.push(/^hoodies?$/i);
+  if (key === 'wigs') values.push(/^wigs?$/i);
+
+  return { $in: values };
+}
 
 function parseFeaturedCategoriesForYou(val) {
   const result = {};
@@ -130,9 +199,16 @@ exports.getAllProducts = async (req, res) => {
     // Special handling for "Sale" - filter by discount instead of category
     if (category) {
       if (category.toLowerCase() === 'sale') {
-        // For Sale, filter products with discount > 0
-        query.discount = { $gt: 0 };
-        console.log('Sale category detected - filtering by discount > 0');
+        // For Sale, include products discounted by percent OR explicitly tagged SALE
+        // (legacy data often uses tags=['SALE'] while discount remains 0).
+        query.$and = query.$and || [];
+        query.$and.push({
+          $or: [
+            { discount: { $gt: 0 } },
+            { tags: { $in: ['SALE'] } }
+          ]
+        });
+        console.log('Sale category detected - filtering by discount > 0 OR tags includes SALE');
       } else {
         // Try to find category by name first (for backward compatibility)
         try {
@@ -163,7 +239,30 @@ exports.getAllProducts = async (req, res) => {
     
     // Filter by productTypes (new multi-category system)
     if (productTypes) {
-      query.productTypes = { $in: [productTypes] };
+      const expanded = expandProductTypeFilter(productTypes);
+      const orClauses = [
+        { productTypes: buildProductTypesFilter(productTypes) },
+        { categoryName: buildCategoryNameFilter(productTypes) }
+      ];
+
+      // Legacy support: many old products use only `category` (ObjectId ref) without productTypes/categoryName.
+      // Include categories whose names match the requested product type aliases.
+      try {
+        const legacyCategories = await Category.find({
+          name: { $in: expanded.length ? expanded : [productTypes] }
+        }).select('_id').lean();
+        const legacyCategoryIds = legacyCategories.map((c) => c._id);
+        if (legacyCategoryIds.length > 0) {
+          orClauses.push({ category: { $in: legacyCategoryIds } });
+        }
+      } catch (legacyCategoryError) {
+        console.error('Error looking up legacy categories for productTypes filter:', legacyCategoryError);
+      }
+
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: orClauses
+      });
     }
     
     // Filter by collection (using collection name or slug)
@@ -213,14 +312,18 @@ exports.getAllProducts = async (req, res) => {
       if (categoryForYou) {
         const featuredKey = `featuredCategoriesForYou.${categoryForYou}`;
         // Require product to have this category in productTypes so position matches section
-        const baseQuery = { ...query, isActive: true, productTypes: { $in: [categoryForYou] } };
+        const baseQuery = {
+          ...query,
+          isActive: true,
+          productTypes: buildProductTypesFilter(categoryForYou)
+        };
         const hasFeatured = await Product.exists({
           ...baseQuery,
           [featuredKey]: { $exists: true, $gte: 1, $lte: 6 }
         });
         if (hasFeatured) {
           query[featuredKey] = { $exists: true, $gte: 1, $lte: 6 };
-          query.productTypes = { $in: [categoryForYou] };
+          query.productTypes = buildProductTypesFilter(categoryForYou);
         }
         // Else: no admin-selected products for this category, fallback to productTypes filter below
       }
@@ -1423,7 +1526,10 @@ const HOME_CATEGORY_TABS = [
 ];
 
 async function fetchCategoryForYouProducts(categoryForYou) {
-  const query = { isActive: true, productTypes: { $in: [categoryForYou] } };
+  const query = {
+    isActive: true,
+    productTypes: buildProductTypesFilter(categoryForYou)
+  };
   const featuredKey = `featuredCategoriesForYou.${categoryForYou}`;
   const hasFeatured = await Product.exists({
     ...query,

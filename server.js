@@ -3,7 +3,24 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
+const dns = require('dns');
 require('dotenv').config();
+
+// Windows: Node can fail with querySrv EREFUSED on mongodb+srv:// while PowerShell DNS works.
+// - Set MONGODB_DNS_SERVERS=8.8.8.8,1.1.1.1 in .env to choose resolvers, or
+// - On Windows we default to public DNS for SRV unless MONGODB_USE_SYSTEM_DNS=1
+const mongoUriEnv = process.env.MONGODB_URI || '';
+if (process.env.MONGODB_DNS_SERVERS) {
+  dns.setServers(
+    process.env.MONGODB_DNS_SERVERS.split(',').map((s) => s.trim()).filter(Boolean)
+  );
+} else if (
+  process.platform === 'win32' &&
+  mongoUriEnv.includes('mongodb+srv://') &&
+  process.env.MONGODB_USE_SYSTEM_DNS !== '1'
+) {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+}
 
 const app = express();
 
@@ -118,7 +135,9 @@ const connectDB = async () => {
   try {
     const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/animeweb';
     
-    await mongoose.connect(mongoURI);
+    await mongoose.connect(mongoURI, {
+      serverSelectionTimeoutMS: 30000
+    });
     console.log('✅ MongoDB connected successfully');
     
     // Start server
@@ -149,6 +168,11 @@ const connectDB = async () => {
       console.error('   - Create a .env file in the backend directory');
       console.error('   - Add: MONGODB_URI=your_connection_string');
       console.error('   - See SETUP.md for more details\n');
+    } else if (error.message && error.message.includes('querySrv')) {
+      console.error('\n📋 MongoDB DNS (querySrv) issue — common on Windows when Node DNS differs from PowerShell:');
+      console.error('   Option A: In backend/.env add: MONGODB_DNS_SERVERS=8.8.8.8,1.1.1.1');
+      console.error('   Option B: In Atlas → Connect, use the standard mongodb://... URI (not mongodb+srv://)');
+      console.error('           (same user/password; avoids SRV lookup)\n');
     }
     
     process.exit(1);
