@@ -2,6 +2,200 @@ const Order = require('../models/Order');
 const shiprocketService = require('../services/shiprocketService');
 
 /**
+ * Shiprocket webhook: Settings → API / Webhooks → URL = POST {BACKEND_URL}/api/shiprocket/webhook
+ * Token in dashboard = same value as SHIPROCKET_WEBHOOK_SECRET (sent as X-Api-Key or Authorization Bearer).
+ */
+
+function verifyShiprocketWebhookSecret(req) {
+  const secret = process.env.SHIPROCKET_WEBHOOK_SECRET;
+  if (!secret || String(secret).trim() === '') {
+    return true;
+  }
+  const auth = req.headers.authorization;
+  const bearer = auth && /^Bearer\s+/i.test(auth) ? auth.replace(/^Bearer\s+/i, '').trim() : '';
+  const fromHeader =
+    req.headers['x-api-key'] ||
+    req.headers['x-shiprocket-secret'] ||
+    bearer ||
+    '';
+  const fromQuery = req.query && req.query.secret != null ? String(req.query.secret) : '';
+  const ok = fromHeader === secret || fromQuery === secret;
+  return ok;
+}
+
+function normalizeWebhookPayload(body) {
+  const b = body && typeof body === 'object' ? body : {};
+  const nested = b.data && typeof b.data === 'object' ? b.data : {};
+  const merge = { ...nested, ...b };
+  const orderId = merge.order_id ?? merge.orderId ?? merge.sr_order_id;
+  const shipmentId = merge.shipment_id ?? merge.shipmentId;
+  const channelOrderId =
+    merge.channel_order_id ?? merge.retailer_order_number ?? merge.order;
+  const statusRaw =
+    merge.status ??
+    merge.shipment_status ??
+    merge.current_status ??
+    merge.current_status_name ??
+    merge.shipment_status_name;
+  const awb =
+    merge.awb_code ??
+    merge.awb ??
+    merge.tracking_number ??
+    merge.tracking_no;
+  const courier = merge.courier_name ?? merge.courier;
+  return {
+    orderId: orderId != null ? orderId : null,
+    shipmentId: shipmentId != null ? shipmentId : null,
+    channelOrderId: channelOrderId != null ? String(channelOrderId).trim() : '',
+    statusRaw: statusRaw != null ? String(statusRaw).trim() : '',
+    awb: awb != null ? String(awb).trim() : '',
+    courier: courier != null ? String(courier).trim() : ''
+  };
+}
+
+function mapShiprocketStatusToOrderStatus(statusRaw) {
+  if (!statusRaw || typeof statusRaw !== 'string') return null;
+  const s = statusRaw.trim().toLowerCase();
+  if (s.includes('deliver') && !s.includes('undeliver')) return 'DELIVERED';
+  if (s.includes('cancel')) return 'CANCELLED';
+  if (s.includes('rto') || s.includes('return to origin') || s === 'returned' || s.includes('reverse')) {
+    return 'RETURNED';
+  }
+  if (
+    s.includes('ship') ||
+    s.includes('dispatch') ||
+    s.includes('transit') ||
+    s.includes('picked') ||
+    s.includes('pickup') ||
+    s.includes('manifest') ||
+    s.includes('out for delivery') ||
+    s.includes('ofd') ||
+    s.includes('in transit')
+  ) {
+    return 'SHIPPED';
+  }
+  if (s.includes('confirm') || s.includes('process') || s.includes('new order') || s.includes('pack')) {
+    return 'CONFIRMED';
+  }
+  if (s.includes('pending')) return 'PENDING';
+  return null;
+}
+
+function shouldApplyOrderStatus(current, next) {
+  if (!next) return false;
+  if (next === 'CANCELLED' || next === 'RETURNED') return true;
+  if (current === 'CANCELLED' || current === 'RETURNED') return false;
+  if (current === 'DELIVERED' && next !== 'RETURNED' && next !== 'CANCELLED') return false;
+  const rank = { PENDING: 1, CONFIRMED: 2, SHIPPED: 3, DELIVERED: 4 };
+  return (rank[next] || 0) >= (rank[current] || 0);
+}
+
+async function findOrderForWebhook({ orderId, shipmentId, channelOrderId }) {
+  const sid = shipmentId != null ? String(shipmentId).trim() : '';
+  if (sid && /^\d+$/.test(sid)) {
+    const o = await Order.findOne({ shiprocketShipmentId: Number(sid) });
+    if (o) return o;
+  }
+  const oid = orderId != null ? String(orderId).trim() : '';
+  if (oid && /^\d+$/.test(oid)) {
+    const num = Number(oid);
+    const o = await Order.findOne({ shiprocketOrderId: num });
+    if (o) return o;
+  }
+  if (oid) {
+    const o = await Order.findOne({ orderNumber: oid });
+    if (o) return o;
+  }
+  if (channelOrderId) {
+    const o = await Order.findOne({ orderNumber: channelOrderId });
+    if (o) return o;
+  }
+  return null;
+}
+
+/**
+ * POST /api/shiprocket/webhook — Shiprocket pushes shipment status; updates local order for admin panel.
+ * No JWT: secured by SHIPROCKET_WEBHOOK_SECRET when set.
+ */
+exports.webhook = async (req, res) => {
+  try {
+    if (!verifyShiprocketWebhookSecret(req)) {
+      return res.status(401).json({ success: false, message: 'Invalid or missing webhook secret' });
+    }
+    const payload = normalizeWebhookPayload(req.body);
+    const mapped = mapShiprocketStatusToOrderStatus(payload.statusRaw);
+
+    if (!payload.orderId && !payload.shipmentId && !payload.channelOrderId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payload must include order_id, shipment_id, or channel_order_id'
+      });
+    }
+
+    const order = await findOrderForWebhook(payload);
+    if (!order) {
+      console.warn('[Shiprocket webhook] No local order match', {
+        orderId: payload.orderId,
+        shipmentId: payload.shipmentId,
+        channelOrderId: payload.channelOrderId || undefined
+      });
+      return res.status(200).json({
+        success: true,
+        matched: false,
+        message: 'Received — no matching order in database'
+      });
+    }
+
+    let changed = false;
+    if (payload.awb) {
+      order.trackingNumber = payload.awb;
+      changed = true;
+    }
+    if (payload.courier) {
+      order.shippingProvider = payload.courier;
+      changed = true;
+    }
+    if (mapped && shouldApplyOrderStatus(order.orderStatus, mapped)) {
+      if (order.orderStatus !== mapped) {
+        order.orderStatus = mapped;
+        changed = true;
+      }
+      if (mapped === 'SHIPPED' && !order.shippedAt) {
+        order.shippedAt = new Date();
+        changed = true;
+      }
+      if (mapped === 'DELIVERED') {
+        order.deliveredAt = order.deliveredAt || new Date();
+        changed = true;
+      }
+      if (mapped === 'CANCELLED' && !order.cancelledAt) {
+        order.cancelledAt = new Date();
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await order.save();
+    }
+
+    return res.status(200).json({
+      success: true,
+      matched: true,
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      orderStatus: order.orderStatus,
+      updated: changed
+    });
+  } catch (error) {
+    console.error('Shiprocket webhook error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Webhook processing failed'
+    });
+  }
+};
+
+/**
  * Verify Shiprocket credentials and connectivity (admin)
  * GET /api/shiprocket/verify – returns success if login works
  */

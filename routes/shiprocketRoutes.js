@@ -1,8 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const { verify, createShipment, syncTracking, syncLastOrder, trackShipment, getAvailableCouriers } = require('../controllers/shiprocketController');
+const {
+  verify,
+  webhook,
+  createShipment,
+  syncTracking,
+  syncLastOrder,
+  trackShipment,
+  getAvailableCouriers
+} = require('../controllers/shiprocketController');
 const { authenticate, isAdmin } = require('../middlewares/auth');
 const { adminLimiter } = require('../middlewares/rateLimiter');
+
+// Shiprocket dashboard → Webhooks (no JWT; use SHIPROCKET_WEBHOOK_SECRET + X-Api-Key)
+router.post('/webhook', webhook);
 
 // Verify Shiprocket connection (admin)
 router.get('/verify', authenticate, isAdmin, verify);
