@@ -11,6 +11,8 @@ const {
   markOrderAsPaid,
   getOrderStats
 } = require('../controllers/orderController');
+const { createCustomerReview } = require('../controllers/reviewController');
+const { uploadReviewImages, handleUploadError } = require('../middlewares/upload');
 const { authenticate, isAdmin, authenticateCustomer, requireCustomer } = require('../middlewares/auth');
 const { adminLimiter } = require('../middlewares/rateLimiter');
 
@@ -19,6 +21,17 @@ router.post('/', authenticateCustomer, createOrder);
 router.get('/confirmation/:id', getOrderConfirmation); // Public: for order confirmation page (guest + logged-in)
 router.get('/my-orders', requireCustomer, getMyOrders);
 router.get('/my-orders/:id', requireCustomer, getMyOrder);
+router.post(
+  '/reviews',
+  requireCustomer,
+  (req, res, next) => {
+    uploadReviewImages(req, res, (err) => {
+      if (err) return handleUploadError(err, req, res, next);
+      next();
+    });
+  },
+  createCustomerReview
+);
 
 // Admin routes
 router.get('/', authenticate, isAdmin, adminLimiter, getAllOrders);

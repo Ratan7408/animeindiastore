@@ -52,7 +52,11 @@ const reviewSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes
+// One verified review per (customer, order, product); legacy rows without `order` are excluded
+reviewSchema.index(
+  { customer: 1, order: 1, product: 1 },
+  { unique: true, partialFilterExpression: { order: { $exists: true } } }
+);
 reviewSchema.index({ product: 1 });
 reviewSchema.index({ customer: 1 });
 reviewSchema.index({ isApproved: 1 });

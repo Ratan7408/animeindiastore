@@ -1,6 +1,7 @@
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Customer = require('../models/Customer');
+const Review = require('../models/Review');
 const Payment = require('../models/Payment');
 const AuditLog = require('../models/AuditLog');
 const Coupon = require('../models/Coupon');
@@ -10,7 +11,8 @@ const shiprocketService = require('../services/shiprocketService');
 const axios = require('axios');
 const {
   sendNewOrderNotification,
-  sendOrderConfirmationToCustomer
+  sendOrderConfirmationToCustomer,
+  sendOrderDeliveredToCustomer
 } = require('../utils/emailService');
 
 /** Sync tracking from Shiprocket for one order (if in Shiprocket but no AWB yet). Used when customer views orders. */
@@ -520,10 +522,42 @@ exports.getMyOrders = async (req, res) => {
     }
     await Promise.allSettled(toSync.map(o => syncOrderTrackingFromShiprocket(o)));
 
+    const reviewDocs = await Review.find({
+      customer: customerId,
+      order: { $in: orders.map((o) => o._id) }
+    })
+      .select('order product isApproved')
+      .lean();
+
+    const reviewKey = (oid, pid) => `${oid}_${pid}`;
+    const reviewLookup = new Map();
+    reviewDocs.forEach((r) => {
+      reviewLookup.set(reviewKey(String(r.order), String(r.product)), r);
+    });
+
+    const data = orders.map((order) => {
+      const o = order.toObject();
+      if (order.orderStatus !== 'DELIVERED') {
+        o.items = (o.items || []).map((it) => ({ ...it, reviewStatus: 'not_eligible' }));
+        return o;
+      }
+      o.items = (o.items || []).map((it) => {
+        const pid = it.product?._id || it.product;
+        const pidStr = String(pid);
+        const rev = reviewLookup.get(reviewKey(String(order._id), pidStr));
+        let reviewStatus = 'can_review';
+        if (rev) {
+          reviewStatus = rev.isApproved ? 'approved' : 'pending';
+        }
+        return { ...it, reviewStatus };
+      });
+      return o;
+    });
+
     res.json({
       success: true,
-      count: orders.length,
-      data: orders
+      count: data.length,
+      data
     });
   } catch (error) {
     console.error('Error fetching customer orders:', error);
@@ -800,6 +834,19 @@ exports.updateOrderStatus = async (req, res) => {
     }
 
     const orderForResponse = await Order.findById(order._id).populate('customer', 'email name phone');
+
+    // Customer email on delivery + product review links
+    if (status === 'DELIVERED' && oldStatus !== 'DELIVERED') {
+      try {
+        const settings = await Settings.getSettings().catch(() => null);
+        const sendDeliveredEmail = settings?.emailNotifications?.orderDelivered !== false;
+        if (sendDeliveredEmail) {
+          await sendOrderDeliveredToCustomer(orderForResponse || order);
+        }
+      } catch (emailErr) {
+        console.error('Order delivered email failed:', emailErr.message || emailErr);
+      }
+    }
 
     // Log audit
     await AuditLog.create({

@@ -75,19 +75,27 @@ exports.uploadSingle = (req, res, next) => {
 // Multiple files upload
 exports.uploadMultiple = upload.array('images', 10); // Max 10 images
 
+/** Customer review photos: smaller files, max 5 images */
+const uploadReview = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: fileFilter
+});
+exports.uploadReviewImages = uploadReview.array('images', 5);
+
 // Error handling middleware for multer
 exports.handleUploadError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
         success: false,
-        message: 'File too large. Maximum size is 50MB.'
+        message: 'File too large. Maximum size is 50MB for product images, 5MB for review photos.'
       });
     }
     if (err.code === 'LIMIT_FILE_COUNT') {
       return res.status(400).json({
         success: false,
-        message: 'Too many files. Maximum is 10 files.'
+        message: 'Too many files. Maximum is 10 product images or 5 review photos.'
       });
     }
   }

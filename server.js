@@ -91,6 +91,9 @@ app.get('/api/public/home', productController.getHomeBundle);
 app.get('/api/public/maintenance', settingsController.getPublicMaintenance);
 app.get('/api/public/checkout-settings', settingsController.getPublicCheckoutSettings);
 app.post('/api/public/contact', publicController.handleContact);
+const reviewController = require('./controllers/reviewController');
+app.get('/api/public/reviews/product/:productId', reviewController.getPublicReviewsByProduct);
+app.get('/api/public/reviews/summary', reviewController.getPublicReviewSummaryByProducts);
 
 // Routes
 app.use('/api/products', require('./routes/productRoutes'));

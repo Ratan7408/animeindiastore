@@ -358,6 +358,80 @@ ${shipping.country || ''}
 }
 
 /**
+ * Send "Order Delivered" email with profile-orders review link.
+ * @param {Object} order
+ */
+async function sendOrderDeliveredToCustomer(order) {
+  if (!order) return;
+
+  const customer = order.customer || {};
+  const shipping = order.shippingAddress || {};
+  const to = customer.email || shipping.email;
+  if (!to) return;
+
+  const orderNumber = order.orderNumber || order._id;
+  const uniqueProductNames = [
+    ...new Set(
+      (order.items || [])
+        .map((item) => String(item?.name || item?.product?.name || '').trim())
+        .filter(Boolean)
+    )
+  ];
+  const productLine = uniqueProductNames.length === 1
+    ? `${uniqueProductNames[0]} has been delivered`
+    : 'Your products have been delivered';
+  const title = `${productLine} — Order #${orderNumber}`;
+  const supportEmail = SUPPORT_EMAIL || 'support@store.animeindia.org';
+  const storeBase = (process.env.STORE_FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const profileOrdersUrl = `${storeBase}/profile#orders`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; font-size: 14px; color: #222;">
+      <h2 style="font-size:20px;margin-bottom:8px;">${title}</h2>
+      <p style="margin:0 0 10px 0;">Dear Customer,</p>
+      <p style="margin:0 0 12px 0;">Your order has been delivered successfully.</p>
+      <p style="margin:0 0 12px 0;">We hope you enjoy your purchase. If you need any assistance, please contact our support team.</p>
+      <p style="margin:0 0 12px 0;">
+        Order: <strong>#${orderNumber}</strong><br>
+        Delivered item(s): <strong>${uniqueProductNames.map((n) => n.replace(/</g, '&lt;')).join(', ') || 'Product'}</strong>
+      </p>
+      <p style="margin:0 0 14px 0;">
+        <a href="${profileOrdersUrl}" target="_blank" rel="noopener" style="display:inline-block;padding:10px 16px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">
+          Rate your experience
+        </a>
+      </p>
+      <p style="margin:0 0 10px 0;">Thank you for choosing us.</p>
+      <p style="margin:0;">Best regards,<br><strong>Anime India</strong></p>
+    </div>
+  `;
+
+  const text = `
+${title}
+
+Dear Customer,
+
+Your order has been delivered successfully.
+Delivered item(s): ${uniqueProductNames.join(', ') || 'Product'}
+
+We hope you enjoy your purchase. If you need any assistance, please contact our support team.
+
+Rate your experience: ${profileOrdersUrl}
+
+Thank you for choosing us.
+
+Best regards,
+Anime India
+`;
+
+  return sendMail({
+    to,
+    subject: title,
+    html,
+    text
+  });
+}
+
+/**
  * Send abandoned cart email to customer (e.g. "You left something behind – this would look great with …").
  * @param {Object} opts - { to, customerName, items: [ { name, price, quantity, image? } ], cartUrl }
  */
@@ -423,6 +497,7 @@ module.exports = {
   sendContactMessage,
   sendNewOrderNotification,
   sendOrderConfirmationToCustomer,
+  sendOrderDeliveredToCustomer,
   sendAbandonedCartEmail
 };
 
