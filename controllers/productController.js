@@ -40,17 +40,18 @@ function deleteProductImagesFromDisk(imageUrls) {
   }
 }
 
-// Helper to build absolute image URLs.
-// Prefer IMAGE_BASE_URL (or STORE_FRONTEND_URL) so images can be served from CDN/front host,
-// fallback to BACKEND_URL when no dedicated image host is configured.
+// Helper to build absolute upload image URLs.
+// IMPORTANT: /uploads is served by backend (api domain), not storefront domain.
+// Prefer an explicit upload host, then backend host.
 // We accept IMAGE_BASE_URL / STORE_FRONTEND_URL / BACKEND_URL as either:
 //   - "https://domain.com"
 //   - "https://domain.com/api"
 // and always normalize it to just "https://domain.com".
 const rawImageBase = (
+  process.env.UPLOAD_PUBLIC_BASE_URL ||
+  process.env.BACKEND_URL ||
   process.env.IMAGE_BASE_URL ||
   process.env.STORE_FRONTEND_URL ||
-  process.env.BACKEND_URL ||
   ''
 ).trim();
 let IMAGE_BASE_URL = '';
@@ -71,6 +72,9 @@ const toImageUrl = (p) => {
   if (!p || typeof p !== 'string') return p;
   if (p.startsWith('http://') || p.startsWith('https://')) return p;
   if (p.startsWith('/uploads/')) {
+    // In local/dev keep relative URL so frontend proxy (/uploads -> backend) always works.
+    // Absolute IMAGE_BASE_URL is only needed in production/public responses.
+    if (process.env.NODE_ENV !== 'production') return p;
     return IMAGE_BASE_URL ? `${IMAGE_BASE_URL}${p}` : p;
   }
   return p;
