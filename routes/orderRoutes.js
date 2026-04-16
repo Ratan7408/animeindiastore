@@ -9,6 +9,7 @@ const {
   getOrder,
   updateOrderStatus,
   markOrderAsPaid,
+  deleteOrder,
   getOrderStats
 } = require('../controllers/orderController');
 const { createCustomerReview } = require('../controllers/reviewController');
@@ -39,6 +40,7 @@ router.get('/stats', authenticate, isAdmin, adminLimiter, getOrderStats);
 router.get('/:id', authenticate, isAdmin, adminLimiter, getOrder);
 router.put('/:id/status', authenticate, isAdmin, adminLimiter, updateOrderStatus);
 router.put('/:id/mark-paid', authenticate, isAdmin, adminLimiter, markOrderAsPaid);
+router.delete('/:id', authenticate, isAdmin, adminLimiter, deleteOrder);
 
 module.exports = router;
 

@@ -3,6 +3,7 @@ const Product = require('../models/Product');
 const Customer = require('../models/Customer');
 const Review = require('../models/Review');
 const Payment = require('../models/Payment');
+const ReturnRequest = require('../models/Return');
 const AuditLog = require('../models/AuditLog');
 const Coupon = require('../models/Coupon');
 const Settings = require('../models/Settings');
@@ -937,6 +938,43 @@ exports.markOrderAsPaid = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error marking order as paid',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Delete order
+// @route   DELETE /api/orders/:id
+// @access  Private/Admin
+exports.deleteOrder = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    // Clean up related records so admin dashboards don't show orphaned data.
+    await Promise.all([
+      Payment.deleteMany({ order: order._id }),
+      Review.deleteMany({ order: order._id }),
+      ReturnRequest.deleteMany({ order: order._id }),
+      AuditLog.deleteMany({ entityType: 'ORDER', entityId: order._id })
+    ]);
+
+    await order.deleteOne();
+
+    res.json({
+      success: true,
+      message: 'Order deleted successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting order',
       error: error.message
     });
   }
