@@ -492,12 +492,66 @@ async function sendAbandonedCartEmail(opts) {
   return sendMail({ to, subject, html, text });
 }
 
+async function sendEventNotifyConfirmation({ to, name, eventTitle, eventDate, eventCity }) {
+  if (!to || !eventTitle || !eventDate) return;
+  const safeName = name || 'there';
+  const dateText = new Date(eventDate).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
+  const subject = `You're subscribed: ${eventTitle}`;
+  const html = `
+    <div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;">
+      <h2 style="margin-bottom:8px;">Hi ${safeName}, you're all set!</h2>
+      <p style="margin:0 0 10px 0;">You will be notified about this event:</p>
+      <p style="margin:0 0 14px 0;">
+        <strong>${eventTitle}</strong><br>
+        ${dateText}${eventCity ? ` • ${eventCity}` : ''}
+      </p>
+      <p style="margin:0;">We will send you a reminder 7 days before the event date.</p>
+    </div>
+  `;
+  const text = `Hi ${safeName},\n\nYou're subscribed for:\n${eventTitle}\n${dateText}${eventCity ? ` • ${eventCity}` : ''}\n\nWe will notify you 7 days before the event date.`;
+  return sendMail({ to, subject, html, text });
+}
+
+async function sendEventReminderEmail({ to, name, eventTitle, eventDate, eventCity, eventLink }) {
+  if (!to || !eventTitle || !eventDate) return;
+  const safeName = name || 'there';
+  const dateText = new Date(eventDate).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
+  const subject = `Reminder: ${eventTitle} is in 7 days`;
+  const linkHtml = eventLink
+    ? `<p style="margin:0 0 12px 0;"><a href="${eventLink}" style="display:inline-block;padding:10px 16px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">View Event Details</a></p>`
+    : '';
+  const html = `
+    <div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;">
+      <h2 style="margin-bottom:8px;">Hi ${safeName}, event reminder</h2>
+      <p style="margin:0 0 10px 0;"><strong>${eventTitle}</strong> is coming up in 7 days.</p>
+      <p style="margin:0 0 14px 0;">
+        Date: ${dateText}<br>
+        ${eventCity ? `City: ${eventCity}` : ''}
+      </p>
+      ${linkHtml}
+      <p style="margin:0;">See you there!</p>
+    </div>
+  `;
+  const text = `Hi ${safeName},\n\nReminder: ${eventTitle} is in 7 days.\nDate: ${dateText}${eventCity ? `\nCity: ${eventCity}` : ''}${eventLink ? `\nDetails: ${eventLink}` : ''}`;
+  return sendMail({ to, subject, html, text });
+}
+
 module.exports = {
   sendMail,
   sendContactMessage,
   sendNewOrderNotification,
   sendOrderConfirmationToCustomer,
   sendOrderDeliveredToCustomer,
-  sendAbandonedCartEmail
+  sendAbandonedCartEmail,
+  sendEventNotifyConfirmation,
+  sendEventReminderEmail
 };
 

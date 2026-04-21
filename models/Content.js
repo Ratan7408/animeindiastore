@@ -20,14 +20,39 @@ const bannerSchema = new mongoose.Schema({
   endDate: Date
 });
 
+const upcomingEventSchema = new mongoose.Schema({
+  title: {
+    type: String,
+    required: true
+  },
+  date: String,
+  city: String,
+  status: {
+    type: String,
+    default: 'Coming Soon'
+  },
+  blurb: String,
+  image: String,
+  link: String,
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  displayOrder: {
+    type: Number,
+    default: 0
+  }
+}, { _id: false });
+
 const contentSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ['BANNER', 'FAQ', 'POLICY', 'CONTACT', 'FOOTER', 'PROMOTIONAL_TEXT'],
+    enum: ['BANNER', 'FAQ', 'POLICY', 'CONTACT', 'FOOTER', 'PROMOTIONAL_TEXT', 'UPCOMING_EVENTS'],
     required: true,
     unique: true
   },
   banners: [bannerSchema],
+  upcomingEvents: [upcomingEventSchema],
   title: String,
   content: String,
   htmlContent: String,

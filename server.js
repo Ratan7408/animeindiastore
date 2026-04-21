@@ -85,12 +85,15 @@ const contentController = require('./controllers/contentController');
 const settingsController = require('./controllers/settingsController');
 const publicController = require('./controllers/publicController');
 const productController = require('./controllers/productController');
+const { authenticateCustomer } = require('./middlewares/auth');
+const { startEventReminderJob } = require('./services/eventReminderService');
 app.get('/api/public/content/:type', contentController.getPublicContentByType);
 app.get('/api/public/banners', settingsController.getPublicBanners);
 app.get('/api/public/home', productController.getHomeBundle);
 app.get('/api/public/maintenance', settingsController.getPublicMaintenance);
 app.get('/api/public/checkout-settings', settingsController.getPublicCheckoutSettings);
 app.post('/api/public/contact', publicController.handleContact);
+app.post('/api/public/events/notify', authenticateCustomer, publicController.notifyForEvent);
 const reviewController = require('./controllers/reviewController');
 app.get('/api/public/reviews/product/:productId', reviewController.getPublicReviewsByProduct);
 app.get('/api/public/reviews/summary', reviewController.getPublicReviewSummaryByProducts);
@@ -149,6 +152,7 @@ const connectDB = async () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
     });
+    startEventReminderJob();
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
     

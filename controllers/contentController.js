@@ -88,7 +88,7 @@ exports.getContentByType = async (req, res) => {
 exports.getPublicContentByType = async (req, res) => {
   try {
     const type = req.params.type.toUpperCase();
-    const allowed = ['BANNER', 'FAQ', 'POLICY', 'CONTACT', 'FOOTER', 'PROMOTIONAL_TEXT'];
+    const allowed = ['BANNER', 'FAQ', 'POLICY', 'CONTACT', 'FOOTER', 'PROMOTIONAL_TEXT', 'UPCOMING_EVENTS'];
     if (!allowed.includes(type)) {
       return res.status(400).json({
         success: false,
@@ -110,6 +110,12 @@ exports.getPublicContentByType = async (req, res) => {
     if (type === 'BANNER' && content.banners && Array.isArray(content.banners)) {
       content.banners.forEach((b) => {
         if (b && b.image) b.image = toImageUrl(b.image);
+      });
+    }
+
+    if (type === 'UPCOMING_EVENTS' && content.upcomingEvents && Array.isArray(content.upcomingEvents)) {
+      content.upcomingEvents.forEach((ev) => {
+        if (ev && ev.image) ev.image = toImageUrl(ev.image);
       });
     }
 
@@ -208,6 +214,35 @@ exports.updateBanners = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error updating banners',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Upload CMS content image and return URL
+// @route   POST /api/content/upload-image
+// @access  Private/Admin
+exports.uploadContentImage = async (req, res) => {
+  try {
+    if (!req.file || !req.file.filename) {
+      return res.status(400).json({
+        success: false,
+        message: 'No image file uploaded'
+      });
+    }
+    const imagePath = `/uploads/${req.file.filename}`;
+    res.json({
+      success: true,
+      message: 'Image uploaded successfully',
+      data: {
+        path: imagePath,
+        url: toImageUrl(imagePath)
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error uploading image',
       error: error.message
     });
   }

@@ -17,7 +17,7 @@ const auditLogSchema = new mongoose.Schema({
   entityType: {
     type: String,
     required: true,
-    enum: ['PRODUCT', 'ORDER', 'CUSTOMER', 'COUPON', 'CATEGORY', 'COLLECTION', 'REVIEW', 'RETURN', 'SETTINGS', 'ADMIN']
+    enum: ['PRODUCT', 'ORDER', 'CUSTOMER', 'COUPON', 'CATEGORY', 'COLLECTION', 'REVIEW', 'RETURN', 'SETTINGS', 'ADMIN', 'CONTENT']
   },
   entityId: mongoose.Schema.Types.ObjectId,
   changes: mongoose.Schema.Types.Mixed,
